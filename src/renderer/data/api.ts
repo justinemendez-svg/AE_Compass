@@ -121,6 +121,7 @@ export interface ForecastSummary {
   nb_target: number;
   nb_bookings: number;
   pipeline: number;
+  pipeline_target: number;
 }
 
 export interface StageEntry {

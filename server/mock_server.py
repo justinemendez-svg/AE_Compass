@@ -531,22 +531,26 @@ def get_forecast(q):
     name = (q.get("name") or "").strip()
     quarter = q.get("quarter", "FY2027Q3")
     if not name or not CLARI_FORECAST_FILE.exists():
-        return {"name": name, "quarter": quarter, "quota": 0, "forecast": 0, "bookings": 0, "ai_target": 0, "ai_bookings": 0, "nb_target": 0, "nb_bookings": 0, "pipeline": 0}
+        return {"name": name, "quarter": quarter, "quota": 0, "forecast": 0, "bookings": 0, "ai_target": 0, "ai_bookings": 0, "nb_target": 0, "nb_bookings": 0, "pipeline": 0, "pipeline_target": 0}
     with CLARI_FORECAST_FILE.open(newline="", encoding="utf-8-sig") as handle:
         rows = csv.DictReader(handle)
         row = next((r for r in rows if (r.get("NAME") or "").strip().casefold() == name.casefold() and canonical_quarter(r.get("YEAR_QUARTER")) == quarter), None)
     if not row:
-        return {"name": name, "quarter": quarter, "quota": 0, "forecast": 0, "bookings": 0, "ai_target": 0, "ai_bookings": 0, "nb_target": 0, "nb_bookings": 0, "pipeline": 0}
+        return {"name": name, "quarter": quarter, "quota": 0, "forecast": 0, "bookings": 0, "ai_target": 0, "ai_bookings": 0, "nb_target": 0, "nb_bookings": 0, "pipeline": 0, "pipeline_target": 0}
     def num(key):
         try: return float(row.get(key) or 0)
         except (TypeError, ValueError): return 0
-    return {"name": row.get("NAME", name), "quarter": quarter, "quota": num("QUARTER_QUOTA"), "forecast": num("QUARTER_FORECAST"), "bookings": num("SIGNED"), "ai_target": num("AI_QUARTER_QUOTA"), "ai_bookings": num("AI_SIGNED"), "nb_target": num("NB_QUARTER_QUOTA"), "nb_bookings": num("NB_SIGNED"), "pipeline": num("PIPELINE")}
+    quota = num("QUARTER_QUOTA")
+    bookings = num("SIGNED")
+    # Targets are intentionally derived from the Clari quarter quota so they
+    # stay consistent even when the source file does not carry target columns.
+    return {"name": row.get("NAME", name), "quarter": quarter, "quota": quota, "forecast": num("QUARTER_FORECAST"), "bookings": bookings, "ai_target": quota * 0.45, "ai_bookings": num("AI_SIGNED"), "nb_target": quota * 0.25, "nb_bookings": num("NB_SIGNED"), "pipeline": num("PIPELINE"), "pipeline_target": max(quota - bookings, 0) * 3}
 
 
 def get_team_forecast(q):
     quarter = q.get("quarter", "FY2027Q3")
     names = {value.strip().casefold() for value in (q.get("names") or "").split("|") if value.strip()}
-    totals = {"quota": 0, "forecast": 0, "bookings": 0, "ai_target": 0, "ai_bookings": 0, "nb_target": 0, "nb_bookings": 0, "pipeline": 0}
+    totals = {"quota": 0, "forecast": 0, "bookings": 0, "ai_target": 0, "ai_bookings": 0, "nb_target": 0, "nb_bookings": 0, "pipeline": 0, "pipeline_target": 0}
     if not names or not CLARI_FORECAST_FILE.exists():
         return {"name": "Team", "quarter": quarter, **totals}
     with CLARI_FORECAST_FILE.open(newline="", encoding="utf-8-sig") as handle:
@@ -556,6 +560,9 @@ def get_team_forecast(q):
             for output, source in (("quota", "QUARTER_QUOTA"), ("forecast", "QUARTER_FORECAST"), ("bookings", "SIGNED"), ("ai_target", "AI_QUARTER_QUOTA"), ("ai_bookings", "AI_SIGNED"), ("nb_target", "NB_QUARTER_QUOTA"), ("nb_bookings", "NB_SIGNED"), ("pipeline", "PIPELINE")):
                 try: totals[output] += float(row.get(source) or 0)
                 except (TypeError, ValueError): pass
+    totals["ai_target"] = totals["quota"] * 0.45
+    totals["nb_target"] = totals["quota"] * 0.25
+    totals["pipeline_target"] = max(totals["quota"] - totals["bookings"], 0) * 3
     return {"name": "Team", "quarter": quarter, **totals}
 
 
