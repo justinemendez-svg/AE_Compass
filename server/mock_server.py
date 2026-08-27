@@ -956,6 +956,10 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         if not length:
             return {}
+        try:
+            return json.loads(self.rfile.read(length))
+        except Exception:
+            return {}
 
     def _multipart_upload(self):
         """Read a multipart upload and return its file plus the selected dataset."""
@@ -1089,6 +1093,27 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"status": "uploaded", "rows": entry["row_count"], "filename": filename, "dataset": dataset})
             except Exception as exc:
                 return self._send({"error": str(exc) or "Upload failed."}, 400)
+
+        if path == "/api/ask":
+            question = str(data.get("question") or "").strip()
+            viewer = str(data.get("owner_name") or "").strip()
+            quarter = str(data.get("quarter") or "FY2027Q3").strip()
+            if not question:
+                return self._send({"answer": "Ask me about a deal, pipeline, AI, New Business, or what to do next.", "evidence": [], "source": "AE Compass data"})
+            rows = get_pipeline({"owner_name": viewer, "quarter": quarter}) if viewer else []
+            if not rows:
+                return self._send({"answer": "I could not find current-quarter opportunities matched to this profile yet.", "evidence": [], "source": "Workday + GTMI/Salesforce"})
+            lowered = question.casefold()
+            selected = rows
+            if "ai" in lowered:
+                selected = [r for r in rows if r.get("opportunity_type", "").casefold() != "new business"]
+            elif "new business" in lowered or "nb" in lowered:
+                selected = [r for r in rows if r.get("opportunity_type", "").casefold() == "new business"]
+            selected = selected[:3] or rows[:3]
+            evidence = [{"opportunity": r["opportunity_name"], "amount": r["product_arr_usd"], "stage": r["stage_name"], "close_date": r["closedate"]} for r in selected]
+            names = ", ".join(r["opportunity_name"] for r in selected)
+            focus = "AI-related opportunities" if "ai" in lowered else "New Business opportunities" if ("new business" in lowered or "nb" in lowered) else "the highest-value current-quarter opportunities"
+            return self._send({"answer": f"For {viewer}, I found {len(selected)} {focus}: {names}. Start with the earliest close date and confirm the next dated customer step.", "evidence": evidence, "source": "Workday + Clari + GTMI/Salesforce"})
 
         m = re.match(r"^/api/notes/([^/]+)$", path)
         if m:

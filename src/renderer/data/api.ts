@@ -104,6 +104,12 @@ export interface GongResponse {
   message: string;
 }
 
+export interface CompassAnswer {
+  answer: string;
+  evidence: Array<{ opportunity: string; amount: number; stage: string; close_date: string }>;
+  source: string;
+}
+
 export interface ForecastSummary {
   name: string;
   quarter: string;
@@ -213,6 +219,16 @@ export const api = {
   getForecast: (name: string, quarter: string) => fetchJSON<ForecastSummary>('/forecast', { name, quarter }),
   getTeamForecast: (names: string[], quarter: string) => fetchJSON<ForecastSummary>('/forecast/team', { names: names.join('|'), quarter }),
   getGong: (opportunityIds: string[]) => fetchJSON<GongResponse>('/gong', { opportunity_ids: opportunityIds.join('|') }),
+
+  askCompass: async (question: string, owner_name: string, quarter: string) => {
+    const res = await fetch(`${API_BASE}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, owner_name, quarter }),
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<CompassAnswer>;
+  },
 
   // Linearity (monthly bookings within quarter)
   getLinearity: (params: { owner_id?: string; owner_name?: string; mgr_team?: string; dir_team?: string; vp_team?: string; svp_name?: string; quarter?: string }) =>
