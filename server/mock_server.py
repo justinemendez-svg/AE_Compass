@@ -991,6 +991,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"status": "ok"})
         if path == "/api/auth/me":
             return self._send(auth_identity(self))
+        if path == "/api/profile":
+            email = (q.get("email") or "").strip().lower()
+            for user in WORKDAY_USERS:
+                if (user.get("EMAIL") or "").strip().lower() != email:
+                    continue
+                role = workday_access_type(user)
+                is_admin = email == "justine.mendez@zendesk.com"
+                return self._send({
+                    "authenticated": True,
+                    "email": email,
+                    "name": (user.get("FULL_NAME") or "").strip(),
+                    "subject_id": str(user.get("EMPLOYEE_ID") or ""),
+                    "role": "Admin" if is_admin else role,
+                    "access_level": "full" if is_admin else ("hierarchy" if role != "AE" else "own profile"),
+                    "scope_value": "all" if is_admin else (user.get("FULL_NAME") or "").strip(),
+                    "source": "local-development-fallback",
+                })
+            return self._send({"authenticated": False, "email": email, "name": None}, 404)
         if path == "/api/admin/uploads":
             return self._send(STATE.get("uploads", []))
         if path == "/api/roster":

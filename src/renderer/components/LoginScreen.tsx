@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Compass, Lock, AlertCircle, ArrowRight } from 'lucide-react';
-import { AccessProfile, authenticate } from '../auth';
+import { AccessProfile, authenticate, profileFromIdentity } from '../auth';
 import { api, DirectoryPerson, RosterAE } from '../data/api';
 
 interface Props { profiles: AccessProfile[]; onLogin: (profile: AccessProfile) => void; }
@@ -66,11 +66,27 @@ export default function LoginScreen({ profiles, onLogin }: Props) {
     window.location.href = '/compass';
   };
 
-  const authenticateWorkEmail = () => {
+  const authenticateWorkEmail = async () => {
     const email = profileSearch.trim().toLowerCase();
     if (!email || !email.includes('@')) {
       setProfileError('Enter your work email to continue.');
       return;
+    }
+    // In the local preview, resolve the typed email directly against the
+    // Workday-backed server. This avoids relying on a possibly stale roster
+    // list or the previous browser session. Production uses SSO identity.
+    if (import.meta.env.DEV) {
+      try {
+        const identity = await api.lookupProfile(email);
+        const profile = profileFromIdentity(identity);
+        if (profile) {
+          setProfileError('');
+          chooseProfile(profile);
+          return;
+        }
+      } catch {
+        // Fall through to the loaded local directory for a useful error.
+      }
     }
     // Local-only escape hatch for the current preview when the mock API is
     // being served by an older process. Production relies on App Foundry's

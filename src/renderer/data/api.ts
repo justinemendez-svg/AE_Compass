@@ -39,7 +39,7 @@ export interface AuthIdentity {
   name: string | null;
   subject_id: string | null;
   role: string | null;
-  access_level: 'full' | 'scoped' | null;
+  access_level: 'full' | 'scoped' | 'hierarchy' | 'own profile' | null;
   scope_value?: string;
   source: 'appfoundry' | 'local-development-fallback';
 }
@@ -174,6 +174,7 @@ export interface ActionItem {
 }
 
 export const api = {
+  lookupProfile: (email: string) => fetchJSON<AuthIdentity>('/profile', { email }),
   health: () => fetchJSON<{ status: string }>('/health'),
 
   getAuthMe: () => fetchJSON<AuthIdentity>('/auth/me'),
