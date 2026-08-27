@@ -1,0 +1,207 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --app-bg: #f5f5f2;
+  --panel: #ffffff;
+  --panel-soft: #fbfbf8;
+  --line: #e8e9e3;
+  --ink: #11110d;
+  --muted: #6f746e;
+  --muted-light: #9ca29a;
+  --shadow-card: 0 1px 2px rgba(17, 17, 13, 0.04), 0 8px 24px rgba(17, 17, 13, 0.04);
+}
+
+:root.dark {
+  color-scheme: dark;
+  --app-bg: #151915;
+  --panel: #202720;
+  --panel-soft: #1b211b;
+  --line: #303b30;
+  --ink: #f5f7ee;
+  --muted: #a6b0a2;
+  --muted-light: #7e897c;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2), 0 12px 28px rgba(0, 0, 0, 0.16);
+}
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+    user-select: none;
+    background-color: var(--app-bg);
+    color: var(--ink);
+    transition: background-color 180ms ease, color 180ms ease;
+  }
+
+  input, textarea {
+    user-select: text;
+  }
+}
+
+@layer components {
+  .app-shell { background: var(--app-bg); color: var(--ink); }
+  .app-sidebar { background: var(--panel); border-color: var(--line); }
+  .brand-mark { @apply flex h-8 w-8 items-center justify-center rounded-[10px] text-accent-fern; background: #d1f470; transform: rotate(-6deg); box-shadow: 3px 3px 0 #a1d78f; }
+  .theme-toggle:hover { background: var(--panel-soft); color: var(--ink); }
+  .theme-switch { @apply relative h-4 w-7 rounded-full; background: #dfe4d9; }
+  .theme-switch span { @apply absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-all; left: 2px; }
+  .theme-dark .theme-switch { background: #496449; }
+  .theme-dark .theme-switch span { left: 14px; background: #d1f470; }
+  .metric-card { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow-card); }
+
+  /* Small playful layer: still Zendesk-green, just warmer and more human. */
+  .app-shell main {
+    background-image:
+      radial-gradient(circle at 96% 4%, rgba(209, 244, 112, 0.18) 0 72px, transparent 73px),
+      radial-gradient(circle at 4% 92%, rgba(161, 215, 143, 0.12) 0 56px, transparent 57px);
+  }
+
+  .app-shell main section {
+    border-radius: 1.1rem;
+  }
+
+  .app-shell button:not(.sidebar-item):not(.theme-toggle) {
+    transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+  }
+
+  .app-shell button:not(.sidebar-item):not(.theme-toggle):hover {
+    transform: translateY(-1px) rotate(-0.25deg);
+  }
+
+  .brand-mark {
+    border-radius: 12px 10px 14px 9px;
+  }
+
+  .metric-card:hover {
+    transform: translateY(-2px) rotate(-0.15deg);
+  }
+}
+
+/* Admin access form: keep the name, access type, hierarchy scope, and apply
+   action on one line on desktop, matching the compact control-room layout. */
+@media (min-width: 768px) {
+  main section.border-accent-cactus\/30 {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.25fr) minmax(150px, 0.85fr) minmax(220px, 1.2fr) auto;
+    column-gap: 0.5rem;
+    align-items: start;
+  }
+
+  main section.border-accent-cactus\/30 > :first-child,
+  main section.border-accent-cactus\/30 > :nth-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  main section.border-accent-cactus\/30 > .relative.mt-4 {
+    grid-column: 1;
+    position: relative;
+  }
+
+  main section.border-accent-cactus\/30 > .relative.mt-4::before,
+  main section.border-accent-cactus\/30 > .mt-3.grid::before,
+  main section.border-accent-cactus\/30 > .mt-3.grid::after {
+    display: block;
+    position: absolute;
+    top: -0.9rem;
+    color: var(--muted);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  main section.border-accent-cactus\/30 > .relative.mt-4::before { content: 'Name'; }
+
+  main section.border-accent-cactus\/30 > .mt-3.grid {
+    grid-column: 2 / -1;
+    margin-top: 1rem;
+    position: relative;
+  }
+
+  main section.border-accent-cactus\/30 > .mt-3.grid::before { content: 'Type of access'; left: 0; }
+  main section.border-accent-cactus\/30 > .mt-3.grid::after { content: 'Access level'; left: 42%; }
+}
+
+/* The name field remains selectable, but the search icon/visual treatment is
+   intentionally quiet so it reads as a person picker rather than a page search. */
+main section.border-accent-cactus\/30 > .relative.mt-4 > svg { display: none; }
+main section.border-accent-cactus\/30 > .relative.mt-4 > input { padding-left: 0.75rem; }
+
+/* The upload panel is the third Admin panel and has its own tab. */
+.admin-tab-access > div > section:nth-of-type(3) { display: none; }
+.admin-tab-data > div > section:nth-of-type(1),
+.admin-tab-data > div > section:nth-of-type(2) { display: none; }
+.progress-details > section:last-child { display: none; }
+.progress-details > section:nth-of-type(2) { display: none; }
+
+/* Keep the access card compact; the controls explain themselves. */
+main section.border-accent-cactus\/30 > :nth-child(2) { display: none; }
+
+/* Tailwind utility bridge for existing screens. */
+.dark .bg-white { background-color: var(--panel) !important; }
+.dark .bg-gray-50, .dark .bg-gray-50\/50 { background-color: var(--panel-soft) !important; }
+.dark .bg-\[\#fbfbf8\] { background-color: var(--panel-soft) !important; }
+.dark .bg-zd-green-50 { background-color: #263526 !important; }
+.dark .bg-zd-green-50\/50 { background-color: #243024 !important; }
+.dark .bg-violet-50 { background-color: #2a2535 !important; }
+.dark .bg-amber-50 { background-color: #382f1c !important; }
+.dark .bg-teal-50 { background-color: #193332 !important; }
+.dark .bg-yellow-50 { background-color: #382f1c !important; }
+.dark .bg-red-50 { background-color: #3a2524 !important; }
+.dark .text-violet-950, .dark .text-amber-950 { color: #f5f7ee !important; }
+.dark .text-violet-700, .dark .text-amber-700 { color: #d4dda8 !important; }
+.dark .text-accent-shamrock { color: #d1f470 !important; }
+.dark .text-accent-fern { color: #eef5d8 !important; }
+.dark .bg-surface-secondary { background-color: var(--app-bg) !important; }
+.dark .border-gray-100, .dark .border-gray-200, .dark .border-gray-300 { border-color: var(--line) !important; }
+.dark .text-gray-900, .dark .text-gray-800, .dark .text-gray-700 { color: var(--ink) !important; }
+.dark .text-gray-600, .dark .text-gray-500 { color: var(--muted) !important; }
+.dark .text-gray-400, .dark .text-gray-300 { color: var(--muted-light) !important; }
+.dark input, .dark textarea, .dark select { background: var(--panel); color: var(--ink); border-color: var(--line); }
+.dark .hover\:bg-gray-50:hover, .dark .hover\:bg-gray-100:hover, .dark .hover\:bg-gray-200:hover { background-color: #2b352b !important; }
+.dark .divide-gray-50 > :not([hidden]) ~ :not([hidden]) { border-color: var(--line) !important; }
+
+@layer components {
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  .metric-card {
+    @apply bg-white rounded-xl border border-gray-100 p-4 shadow-card transition-shadow hover:shadow-elevated;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer;
+  }
+
+  .sidebar-item-active {
+    @apply bg-accent-shamrock/10 text-accent-shamrock;
+  }
+
+  .sidebar-item-inactive {
+    @apply text-gray-600 hover:bg-surface-secondary;
+  }
+
+  .status-green {
+    @apply bg-zd-green-50 text-accent-shamrock border-accent-cactus/30;
+  }
+
+  .status-yellow {
+    @apply bg-yellow-50 text-yellow-700 border-yellow-200;
+  }
+
+  .status-red {
+    @apply bg-red-50 text-red-700 border-red-200;
+  }
+}
