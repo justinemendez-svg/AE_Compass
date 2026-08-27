@@ -35,6 +35,11 @@ export default function App() {
     let active = true;
     api.getAuthMe().then((identity) => {
       if (!active) return;
+      // In local development the server has a convenience fallback identity
+      // (Justine) so the shell can be previewed without SSO. Do not let that
+      // fallback overwrite a profile the user explicitly selected by email
+      // on the landing screen. App Foundry/SSO identities still take priority.
+      if (identity.source === 'local-development-fallback' && getSessionId()) return;
       const identityProfile = profileFromIdentity(identity);
       if (identityProfile) {
         setProfiles((existing) => {
