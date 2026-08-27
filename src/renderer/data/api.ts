@@ -15,6 +15,7 @@ async function fetchJSON<T>(path: string, params?: Record<string, string>): Prom
 export interface RosterAE {
   user_id: string;
   ae_name: string;
+  email?: string;
   vp_team_c: string;
   dir_team_c: string;
   mgr_team_c: string;

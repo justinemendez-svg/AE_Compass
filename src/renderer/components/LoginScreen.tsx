@@ -34,7 +34,7 @@ export default function LoginScreen({ profiles, onLogin }: Props) {
     const fromRoster: AccessProfile[] = roster.map((person) => ({
       id: `workday-${person.user_id}`,
       name: person.ae_name,
-      email: `${person.ae_name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@zendesk.com`,
+      email: person.email || `${person.ae_name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@zendesk.com`,
       password: '', role: 'AE', scopeValue: person.user_id, active: true,
       accessLevel: 'scoped', subjectId: person.user_id, accessScopes: [],
     }));

@@ -447,6 +447,7 @@ def get_roster():
             results.append({
                 "user_id": (user.get("EMPLOYEE_ID") or "").strip(),
                 "ae_name": (user.get("FULL_NAME") or "").strip(),
+                "email": (user.get("EMAIL") or "").strip().lower(),
                 "vp_team_c": (user.get("C_STAFF_2") or "").strip(),
                 "dir_team_c": (user.get("C_STAFF_3") or "").strip(),
                 "mgr_team_c": (user.get("C_STAFF_4") or "").strip(),
