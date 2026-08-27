@@ -6,7 +6,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "server": "cd server && python3 app.py"
+    "server": "cd server && python3 app.py",
+    "refresh-data": "python3 server/refresh_appfoundry_data.py",
+    "refresh-data-live": "python3 server/refresh_appfoundry_data.py --pull-live"
   },
   "dependencies": {
     "uuid": "^9.0.0"

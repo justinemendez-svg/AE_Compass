@@ -1,5 +1,14 @@
 # AE Compass — Local Playground
 
+## AppFoundry data bundle
+
+Run `python3 server/refresh_appfoundry_data.py` (or `npm run refresh-data`) to
+create `AE_Compass_AppFoundry_Data.zip` in the shared AE Compass folder. This
+is the lightweight upload package: it contains slim Workday, GTMI, Salesforce,
+and Clari CSVs plus a manifest. Use `npm run refresh-data-live` when the live
+Salesforce/Snowflake SSO pull is available. Raw Gong calls and transcripts are
+not included in the bundle.
+
 This is a **local, standalone copy** of the AE Compass dashboard for tinkering.
 It is **not** connected to GitHub, the real PostgreSQL database, or Snowflake.
 
