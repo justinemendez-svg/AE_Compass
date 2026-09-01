@@ -63,6 +63,7 @@ export default function LoginScreen({ profiles, onLogin }: Props) {
     setShowProfileAuth(false);
     setError('');
     onLogin(profile);
+    sessionStorage.setItem('ae-compass-entry', '1');
     window.location.href = '/compass';
   };
 

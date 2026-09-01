@@ -23,9 +23,17 @@ import cgi
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env")
+except ImportError:
+    pass
+
 from quarter_utils import canonical_quarter
 from sfdc_live import fetch_live
 from gong_live import fetch_gong_signals
+from assistant import AssistantUnavailable, answer_question
 
 STATE_FILE = Path(__file__).parent / "mock_state.json"
 UPLOAD_DIR = Path(__file__).parent / "uploads"
@@ -376,7 +384,7 @@ def load_sfdc_signed_export(path=None, content=None, filename=""):
         rows = []
         for source in source_rows:
             row = clean(source)
-            stage = first(row, "stagename", "stage_name", "stage", "stage name")
+            stage = first(row, "stagename", "stage_name", "stage", "stage name").strip()
             stage_number = re.match(r"^(\d+)", stage)
             if not stage_number or int(stage_number.group(1)) not in {2, 3, 4, 5, 6, 7, 8}:
                 continue
@@ -387,7 +395,7 @@ def load_sfdc_signed_export(path=None, content=None, filename=""):
             # open pipeline and signed; GTMI is the source with separate ARR
             # versus booking-ARR fields.
             eligible_amount = total_commissionable
-            if eligible_amount <= 0 or not false_value(non_commissionable):
+            if booking <= 0 or eligible_amount <= 0 or not false_value(non_commissionable):
                 continue
             closedate = first(row, "closedate", "close_date", "close date")
             rows.append({
@@ -1128,17 +1136,12 @@ class Handler(BaseHTTPRequestHandler):
             rows = get_pipeline({"owner_name": viewer, "quarter": quarter}) if viewer else []
             if not rows:
                 return self._send({"answer": "I could not find current-quarter opportunities matched to this profile yet.", "evidence": [], "source": "Workday + GTMI/Salesforce"})
-            lowered = question.casefold()
-            selected = rows
-            if "ai" in lowered:
-                selected = [r for r in rows if r.get("opportunity_type", "").casefold() != "new business"]
-            elif "new business" in lowered or "nb" in lowered:
-                selected = [r for r in rows if r.get("opportunity_type", "").casefold() == "new business"]
-            selected = selected[:3] or rows[:3]
-            evidence = [{"opportunity": r["opportunity_name"], "amount": r["product_arr_usd"], "stage": r["stage_name"], "close_date": r["closedate"]} for r in selected]
-            names = ", ".join(r["opportunity_name"] for r in selected)
-            focus = "AI-related opportunities" if "ai" in lowered else "New Business opportunities" if ("new business" in lowered or "nb" in lowered) else "the highest-value current-quarter opportunities"
-            return self._send({"answer": f"For {viewer}, I found {len(selected)} {focus}: {names}. Start with the earliest close date and confirm the next dated customer step.", "evidence": evidence, "source": "Workday + Clari + GTMI/Salesforce"})
+            try:
+                return self._send(answer_question(question, viewer, quarter, rows, data.get("history", [])))
+            except AssistantUnavailable as exc:
+                return self._send({"error": "assistant_unavailable", "message": str(exc)}, 503)
+            except Exception:
+                return self._send({"error": "assistant_unavailable", "message": "Ask Compass could not complete a response. Please try again."}, 503)
 
         m = re.match(r"^/api/notes/([^/]+)$", path)
         if m:

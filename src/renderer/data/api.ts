@@ -222,11 +222,11 @@ export const api = {
   getTeamForecast: (names: string[], quarter: string) => fetchJSON<ForecastSummary>('/forecast/team', { names: names.join('|'), quarter }),
   getGong: (opportunityIds: string[]) => fetchJSON<GongResponse>('/gong', { opportunity_ids: opportunityIds.join('|') }),
 
-  askCompass: async (question: string, owner_name: string, quarter: string) => {
+  askCompass: async (question: string, owner_name: string, quarter: string, history: Array<{ role: 'user' | 'assistant'; text: string }> = []) => {
     const res = await fetch(`${API_BASE}/ask`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, owner_name, quarter }),
+      body: JSON.stringify({ question, owner_name, quarter, history }),
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<CompassAnswer>;

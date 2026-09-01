@@ -9,16 +9,18 @@ and Clari CSVs plus a manifest. Use `npm run refresh-data-live` when the live
 Salesforce/Snowflake SSO pull is available. Raw Gong calls and transcripts are
 not included in the bundle.
 
-This is a **local, standalone copy** of the AE Compass dashboard for tinkering.
-It is **not** connected to GitHub, the real PostgreSQL database, or Snowflake.
+This is a **local, standalone copy** of the AE Compass dashboard. The UI runs
+against a local, read-only cache of the verified Workday, Clari, GTMI, and
+Salesforce extracts in the shared AE Compass folder. It does not write to
+Salesforce, Snowflake, GitHub, or any other repository.
 
 ## What's different from the original
 
-The real app needs Flask + PostgreSQL + Snowflake (over corporate Okta SSO).
-This copy swaps that entire data layer for a **zero-dependency mock server**
-(`server/mock_server.py`) that generates realistic **fake** data — 125 made-up
-AEs, a full SVP→RVP→Director→Manager→AE hierarchy, and pipeline/bookings across
-FY27 Q1–Q4. The React frontend is completely unchanged.
+The local server (`server/mock_server.py`) reads the compact Workday and GTMI
+exports plus the Salesforce opportunity export. Clari supplies quota/forecast;
+Salesforce supplies total signed and total open pipeline; GTMI supplies the AI
+and New Business product views. A deterministic sample generator remains only
+as a fallback when the Workday/GTMI files are unavailable.
 
 No Postgres install, no pip packages, no network, no SSO. Just Node + Python 3.
 
@@ -42,12 +44,11 @@ npm run dev
 
 ## Notes
 
-- **All numbers are fake and deterministic** (seeded), so they're stable across
-  restarts. They mean nothing.
+- Refresh the source files manually with `npm run refresh-data-live` when
+  Snowflake access is available, or use `npm run refresh-data` to rebuild the
+  compressed AppFoundry bundle from the current shared-folder exports.
 - Your edits in the UI (coaching notes, action items, competency scores, weekly
   tracker, deal maps, quotas) persist to `server/mock_state.json`. Delete that
   file to reset to a clean slate.
-- The Admin CSV upload screen "succeeds" but is a no-op — the mock server ignores
-  uploads and always serves its generated data.
-- Want to change the data? Edit `make_generator()` in `server/mock_server.py`
-  (org size, deal counts, amounts, products) and restart the server.
+- The Admin CSV upload screen stores local uploads for the prototype; production
+  AppFoundry should use the generated ZIP bundle and its manifest.

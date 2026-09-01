@@ -11,12 +11,26 @@ export default function App() {
   const [profiles, setProfiles] = useState<AccessProfile[]>(() => loadProfiles());
   const [sessionId, setSession] = useState<string | null>(() => getSessionId());
   const [authLoading, setAuthLoading] = useState(true);
-  const [landingMode, setLandingMode] = useState(() => new URLSearchParams(window.location.search).get('landing') === '1');
+  const [landingMode, setLandingMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const intentionalEntry = sessionStorage.getItem('ae-compass-entry') === '1';
+    // Shared/direct URLs—including the root URL—always start at landing.
+    // Only the immediately-following navigation from profile authentication
+    // is allowed to enter Compass directly.
+    return params.get('landing') === '1' || (!intentionalEntry && (window.location.pathname === '/' || window.location.pathname === '/compass'));
+  });
   const [adminSection, setAdminSection] = useState<AdminSection>('access');
   const [roster, setRoster] = useState<RosterAE[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => localStorage.getItem('ae-compass-theme') === 'dark' ? 'dark' : 'light');
   const currentUser = useMemo(() => profiles.find((profile) => profile.id === sessionId && profile.active) || null, [profiles, sessionId]);
+
+  useEffect(() => {
+    // Clear the one-time navigation marker after the initial route decision.
+    // Keeping this out of the state initializer prevents React StrictMode's
+    // development re-render from cancelling a valid email login.
+    sessionStorage.removeItem('ae-compass-entry');
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
