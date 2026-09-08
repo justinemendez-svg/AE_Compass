@@ -16,7 +16,7 @@ SELECT Id, Name, OwnerId, Owner.Name, StageName, Type, CloseDate,
        Total_Commissionable_ARR_in_USD__c, Non_Commissionable__c,
        ForecastCategoryName
 FROM Opportunity
-WHERE StageName IN ('02 - Confirm Need','03 - Establish Value',
+WHERE StageName IN ('01 - Qualify Need','02 - Confirm Need','03 - Establish Value',
                     '04 - Demonstrate Value','05 - Secure Commitment',
                     '06 - Contracting','07 - Signed','08 - Closed')
   AND Non_Commissionable__c = false

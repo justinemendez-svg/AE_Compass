@@ -60,6 +60,11 @@ export interface PipelineDeal {
   gtm_team: string;
   vp_deal_forecast__c: string | null;
   manager_forecast__c: string | null;
+  quote_status?: 'present' | 'missing' | null;
+  has_executive_relationships?: boolean | string | null;
+  zendesk_executive_connect?: string | null;
+  economic_buyer_status?: 'present' | 'missing' | null;
+  executive_sponsor_status?: 'present' | 'missing' | null;
   close_fiscal_quarter: string;
   d_score_latest__c: string | null;
 }
@@ -79,6 +84,7 @@ export interface MetricsSummary {
   bookings_deal_count: number;
   bookings_nb_deal_count: number;
   bookings_ai_deal_count: number;
+  data_as_of?: string | null;
 }
 
 export interface GongSignal {
@@ -86,6 +92,7 @@ export interface GongSignal {
   call_count: number;
   last_call_at: string | null;
   last_call_title: string | null;
+  last_call_brief: string | null;
   last_call_next_steps: string | null;
   last_call_key_points: string | null;
   days_since_call: number | null;
@@ -184,10 +191,10 @@ export const api = {
 
   getDirectory: () => fetchJSON<DirectoryPerson[]>('/directory'),
 
-  getPipeline: (params: { owner_id?: string; owner_name?: string; mgr_team?: string; dir_team?: string; vp_team?: string; svp_name?: string; quarter?: string }) =>
+  getPipeline: (params: { owner_id?: string; owner_name?: string; mgr_team?: string; dir_team?: string; vp_team?: string; svp_name?: string; all?: string; quarter?: string }) =>
     fetchJSON<PipelineDeal[]>('/pipeline', params as Record<string, string>),
 
-  getMetricsSummary: (params: { owner_id?: string; owner_name?: string; mgr_team?: string; dir_team?: string; vp_team?: string; svp_name?: string; quarter?: string }) =>
+  getMetricsSummary: (params: { owner_id?: string; owner_name?: string; mgr_team?: string; dir_team?: string; vp_team?: string; svp_name?: string; all?: string; quarter?: string }) =>
     fetchJSON<MetricsSummary>('/metrics/summary', params as Record<string, string>),
 
   getStageDistribution: (owner_id: string, quarter: string) =>
@@ -195,6 +202,9 @@ export const api = {
 
   getPipelineByProduct: (params: { owner_id?: string; owner_name?: string; mgr_team?: string; dir_team?: string; vp_team?: string; svp_name?: string; quarter?: string }) =>
     fetchJSON<ProductEntry[]>('/pipeline_by_product', params as Record<string, string>),
+
+  getGtmiPipelineSummary: (params: { owner_id?: string; owner_name?: string; mgr_team?: string; dir_team?: string; vp_team?: string; svp_name?: string; all?: string; quarter?: string }) =>
+    fetchJSON<{ total: number; ai: number; nb: number; deal_count: number; ai_deal_count: number; nb_deal_count: number; quarter: string }>('/gtmi_pipeline_summary', params as Record<string, string>),
 
   getHistorical: (params: { owner_id?: string; mgr_team?: string; dir_team?: string; vp_team?: string; svp_name?: string }) =>
     fetchJSON<HistoricalEntry[]>('/historical', params as Record<string, string>),

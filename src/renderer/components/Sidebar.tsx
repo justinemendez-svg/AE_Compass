@@ -1,4 +1,4 @@
-import { BarChart3, GraduationCap, Compass, Settings, Eye, Upload } from 'lucide-react';
+import { Compass, Settings, Eye, Upload } from 'lucide-react';
 import { AccessProfile } from '../auth';
 import type { AdminSection } from '../pages/AdminPanel';
 
@@ -27,26 +27,7 @@ export default function Sidebar({ activeTab, setActiveTab, theme, toggleTheme, c
       </div>
 
       <nav className="flex-1 p-3 space-y-1">
-        {currentUser.role !== 'Admin' && <>
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`sidebar-item w-full ${
-              activeTab === 'dashboard' ? 'sidebar-item-active' : 'sidebar-item-inactive'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            Performance
-          </button>
-          <button
-            onClick={() => setActiveTab('development')}
-            className={`sidebar-item w-full ${
-              activeTab === 'development' ? 'sidebar-item-active' : 'sidebar-item-inactive'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            Development
-          </button>
-        </>}
+        {currentUser.role !== 'Admin' && <div className="px-3 py-3 text-[10px] leading-relaxed text-[#8a958b]">Your Compass view is matched to your profile.</div>}
         {currentUser.role === 'Admin' && <div className="mt-2 space-y-1 border-t border-gray-100 pt-3">
           <button onClick={() => setAdminSection('access')} className={`sidebar-item w-full ${adminSection === 'access' ? 'sidebar-item-active' : 'sidebar-item-inactive'}`}><Settings className="w-4 h-4" />Access</button>
           <button onClick={() => setAdminSection('visits')} className={`sidebar-item w-full ${adminSection === 'visits' ? 'sidebar-item-active' : 'sidebar-item-inactive'}`}><Eye className="w-4 h-4" />Who visits the page</button>

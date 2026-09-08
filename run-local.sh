@@ -1,11 +1,11 @@
 #!/bin/bash
-# AE Compass — LOCAL PLAYGROUND launcher (mock data, no Postgres/Snowflake).
-# Starts the mock data server (:8080) and the Vite frontend (:5173) together.
+# AE Compass — local launcher (no Postgres/Snowflake).
+# Starts the local data adapter (:8080) and the Vite frontend (:5173) together.
 # Ctrl-C stops both. Nothing here touches the real database or GitHub.
 set -e
 cd "$(dirname "$0")"
 
-echo "Starting AE Compass local playground (mock data)…"
+echo "Starting AE Compass local playground…"
 
 # Mock data server. Override AE_COMPASS_API_PORT if another local preview is using 8080.
 API_PORT="${AE_COMPASS_API_PORT:-8080}"

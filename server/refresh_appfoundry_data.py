@@ -114,6 +114,17 @@ def current_quarter() -> tuple[str, str]:
     return f"FY{fiscal_year}Q{quarter}", f"{fiscal_year}_Q{quarter}"
 
 
+def next_quarter(fiscal_label: str) -> tuple[str, str]:
+    quarter = int(fiscal_label[-1])
+    year = int(fiscal_label[2:6])
+    if quarter == 4:
+        year += 1
+        quarter = 1
+    else:
+        quarter += 1
+    return f"FY{year}Q{quarter}", f"{year}_Q{quarter}"
+
+
 def run_live_pulls() -> list[str]:
     """Refresh sources using existing AE Compass pullers where available."""
     messages: list[str] = []
@@ -134,8 +145,10 @@ def run_live_pulls() -> list[str]:
         raise RuntimeError("--pull-live requires snowflake-connector-python and python-dotenv") from exc
 
     gtm_env = PROJECT_ROOT.parent / "gtm-ops-claude" / ".env"
+    current_fy, current_clari = current_quarter()
+    next_fy, next_clari = next_quarter(current_fy)
     load_dotenv(gtm_env)
-    query = """
+    query = f"""
         SELECT OWNERID, OPPORTUNITY_OWNER_NAME, CRM_OPPORTUNITY_ID,
                OPPORTUNITY_NAME, CRM_ACCOUNT_NAME, STAGE_NAME, OPPORTUNITY_TYPE,
                OPPORTUNITY_STATUS, PRODUCT, PRODUCT_ARR_USD,
@@ -147,6 +160,7 @@ def run_live_pulls() -> list[str]:
         FROM FUNCTIONAL.GTM_SALES_OPS.GTMSI_CONSOLIDATED_PIPELINE_BOOKINGS
         WHERE DATE_LABEL = 'today'
           AND OPPORTUNITY_IS_COMMISSIONABLE = TRUE
+          AND CLOSE_YEAR_QUARTER IN ('{current_fy}', '{next_fy}')
           AND (PRODUCT_ARR_USD > 0 OR PRODUCT_BOOKING_ARR_USD > 0)
     """
     connection = snowflake.connector.connect(
@@ -171,19 +185,21 @@ def run_live_pulls() -> list[str]:
 def build_bundle() -> tuple[Path, dict[str, object]]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     fy_label, clari_label = current_quarter()
+    next_fy_label, next_clari_label = next_quarter(fy_label)
     temp_dir = Path(tempfile.mkdtemp(prefix="ae-compass-bundle-"))
     try:
         manifest: dict[str, object] = {
             "bundle_version": 1,
             "generated_at": dt.datetime.now().astimezone().isoformat(),
             "zendesk_fiscal_quarter": fy_label,
-            "clari_year_quarter": clari_label,
+            "clari_year_quarters": [clari_label, next_clari_label],
+            "zendesk_fiscal_quarters": [fy_label, next_fy_label],
             "source_directory": str(DATA_DIR),
             "filters": {
                 "workday": "C_STAFF = Chris Donato; active workers; _FIVETRAN_DELETED is false when present",
-                "gtmi": "DATE_LABEL = today; commissionable = true; PRODUCT_ARR_USD or PRODUCT_BOOKING_ARR_USD > 0",
+                "gtmi": f"DATE_LABEL = today; commissionable = true; CLOSE_YEAR_QUARTER IN ({fy_label}, {next_fy_label}); PRODUCT_ARR_USD or PRODUCT_BOOKING_ARR_USD > 0",
                 "sfdc": "Booking/commissionable ARR > 0; non-commissionable = false in source pull",
-                "clari": f"YEAR_QUARTER = {clari_label}; current snapshot export",
+                "clari": f"YEAR_QUARTER IN ({clari_label}, {next_clari_label}); latest snapshot per quarter",
                 "gong": "not included; raw calls/transcripts are intentionally excluded from AppFoundry bundle",
             },
             "files": {},
@@ -207,7 +223,8 @@ def build_bundle() -> tuple[Path, dict[str, object]]:
             if number(row.get("BOOKING_ARR__C")) > 0
             and not truthy(row.get("NON_COMMISSIONABLE"), default=False)
         ]
-        clari = [row for row in read_rows(DATA_DIR / SOURCE_FILES["clari"]) if text(row.get("YEAR_QUARTER")) == clari_label]
+        clari = [row for row in read_rows(DATA_DIR / SOURCE_FILES["clari"])
+                 if text(row.get("YEAR_QUARTER")) in {clari_label, next_clari_label}]
 
         datasets = {
             "workday_roster.csv": (workday, WORKDAY_COLUMNS),

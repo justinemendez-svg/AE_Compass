@@ -19,8 +19,8 @@ Salesforce, Snowflake, GitHub, or any other repository.
 The local server (`server/mock_server.py`) reads the compact Workday and GTMI
 exports plus the Salesforce opportunity export. Clari supplies quota/forecast;
 Salesforce supplies total signed and total open pipeline; GTMI supplies the AI
-and New Business product views. A deterministic sample generator remains only
-as a fallback when the Workday/GTMI files are unavailable.
+and New Business product views. If a source is unavailable, the dashboard stays
+empty rather than showing invented sample records.
 
 No Postgres install, no pip packages, no network, no SSO. Just Node + Python 3.
 
@@ -35,7 +35,7 @@ Then open **http://localhost:5173**. Ctrl-C stops both servers.
 Or start the two pieces manually in separate terminals:
 
 ```bash
-# Terminal 1 — mock data server
+# Terminal 1 — local data server
 PORT=8080 python3 server/mock_server.py
 
 # Terminal 2 — frontend
@@ -47,8 +47,7 @@ npm run dev
 - Refresh the source files manually with `npm run refresh-data-live` when
   Snowflake access is available, or use `npm run refresh-data` to rebuild the
   compressed AppFoundry bundle from the current shared-folder exports.
-- Your edits in the UI (coaching notes, action items, competency scores, weekly
-  tracker, deal maps, quotas) persist to `server/mock_state.json`. Delete that
-  file to reset to a clean slate.
+- Local access and upload edits persist to `server/mock_state.json`. Delete that
+  file to reset the local access state.
 - The Admin CSV upload screen stores local uploads for the prototype; production
   AppFoundry should use the generated ZIP bundle and its manifest.

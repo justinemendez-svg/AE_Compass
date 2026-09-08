@@ -1,10 +1,9 @@
 """
-SalesPilot MOCK Data Server — a zero-dependency local stand-in for the real
-Flask + PostgreSQL + Snowflake backend.
+AE Compass local data server — a zero-dependency local adapter for the
+verified Workday, Clari, GTMI, and Salesforce extracts.
 
-Everything here is FAKE, deterministically-generated data. It touches no real
-database, no Snowflake, no network. It implements the exact same /api/* surface
-the real server does, so the unmodified React frontend works against it.
+It never invents dashboard records. When a source extract is unavailable, the
+API returns an empty result so the UI can show a clear data-status message.
 
 Run:  python3 server/mock_server.py   (listens on PORT, default 8080)
 
@@ -43,6 +42,14 @@ CLARI_FORECAST_FILE = DRIVE_HIERARCHY_FILE.parent / "clari_forecast_current_quar
 PIPELINE_EXPORT_FILE = Path(os.environ.get("PIPELINE_EXPORT_FILE", str(DRIVE_HIERARCHY_FILE.parent / "gtmsi_pipeline_current_quarter.csv")))
 SFDC_EXPORT_FILE = Path(os.environ.get("SFDC_EXPORT_FILE", str(DRIVE_HIERARCHY_FILE.parent / "salesforce_opportunities_current_quarter.csv")))
 WORKDAY_USERS = []
+
+def source_data_as_of():
+    """Return the latest verified local extract timestamp, when available."""
+    paths = [CLARI_FORECAST_FILE, PIPELINE_EXPORT_FILE, SFDC_EXPORT_FILE]
+    timestamps = [path.stat().st_mtime for path in paths if path.exists()]
+    if not timestamps:
+        return None
+    return datetime.datetime.fromtimestamp(max(timestamps)).isoformat(timespec="seconds")
 
 def workday_access_type(user):
     title = (user.get("JOB_TITLE") or user.get("BUSINESS_TITLE") or "").lower()
@@ -247,7 +254,7 @@ def make_generator():
     return roster, rows
 
 
-ROSTER, ROWS = make_generator()
+ROSTER, ROWS = [], []
 
 
 def load_drive_hierarchy():
@@ -255,7 +262,6 @@ def load_drive_hierarchy():
     if not DRIVE_HIERARCHY_FILE.exists():
         return None
     try:
-        import csv
         with DRIVE_HIERARCHY_FILE.open(newline="", encoding="utf-8-sig") as handle:
             users = list(csv.DictReader(handle))
         # Keep the local Compass directory aligned with the Workday extract
@@ -316,6 +322,15 @@ def load_pipeline_export():
                     return float(str(row.get(key, "0")).replace(",", "") or 0)
                 except (TypeError, ValueError):
                     return 0.0
+            def optional(*keys):
+                for key in keys:
+                    if key in row:
+                        return row[key] or None
+                return None
+            def bool_value(value):
+                if value is None or str(value).strip() == "":
+                    return None
+                return str(value).strip().lower() in {"true", "1", "yes", "y", "t"}
             is_sfdc_opportunity = "booking_arr__c" in row or "booking_arr_c" in row
             non_commissionable = (row.get("non_commissionable__c") or row.get("non_commissionable_c") or
                                   row.get("non-commissionable__c") or row.get("non-commissionable") or
@@ -331,6 +346,9 @@ def load_pipeline_export():
                 "product_booking_arr_usd": number("booking_arr__c") or number("booking_arr_c") or number("product_booking_arr_usd"),
                 "closedate": closedate, "stage_2_plus_date_c": row.get("stage_2_plus_date_c", ""), "gtm_team": row.get("gtm_team", ""),
                 "vp_deal_forecast__c": row.get("vp_deal_forecast__c", ""), "manager_forecast__c": row.get("manager_forecast__c", ""),
+                "quote_status": optional("quote_status", "quote", "cpq_quote_status", "has_quote"),
+                "has_executive_relationships": bool_value(optional("has_executive_relationships", "has executive relationships", "has_executive_relationships__c", "executive_relationships")),
+                "zendesk_executive_connect": optional("zendesk_executive_connect", "zendesk executive connect", "zendesk_executive_connect__c", "executive_connect"),
                 "close_year_quarter": canonical_quarter(row.get("close_year_quarter"), closedate),
                 "d_score_latest__c": row.get("d_score_latest__c", ""), "date_label": row.get("date_label", "today"),
                 "opportunity_is_commissionable": row.get("opportunity_is_commissionable", "true").lower() in {"true", "1", "yes", "t"},
@@ -386,7 +404,7 @@ def load_sfdc_signed_export(path=None, content=None, filename=""):
             row = clean(source)
             stage = first(row, "stagename", "stage_name", "stage", "stage name").strip()
             stage_number = re.match(r"^(\d+)", stage)
-            if not stage_number or int(stage_number.group(1)) not in {2, 3, 4, 5, 6, 7, 8}:
+            if not stage_number or int(stage_number.group(1)) not in {1, 2, 3, 4, 5, 6, 7, 8}:
                 continue
             booking = number(first(row, "booking_arr__c", "booking_arr_c", "booking arr", "booking_arr"))
             total_commissionable = number(first(row, "total_commissionable_arr_c", "total_commissionable_arr", "total commissionable arr"))
@@ -419,7 +437,6 @@ def load_sfdc_signed_export(path=None, content=None, filename=""):
     except Exception:
         return None
     try:
-        import csv
         with PIPELINE_EXPORT_FILE.open(newline="", encoding="utf-8-sig") as handle:
             source_rows = list(csv.DictReader(handle))
         rows = []
@@ -455,6 +472,9 @@ def load_sfdc_signed_export(path=None, content=None, filename=""):
                 "product_booking_arr_usd": number("booking_arr__c") or number("booking_arr_c") or number("product_booking_arr_usd"), "closedate": closedate,
                 "stage_2_plus_date_c": row.get("stage_2_plus_date_c", ""), "gtm_team": row.get("gtm_team", ""),
                 "vp_deal_forecast__c": row.get("vp_deal_forecast__c", ""), "manager_forecast__c": row.get("manager_forecast__c", ""),
+                "quote_status": row.get("quote_status") or row.get("quote") or row.get("cpq_quote_status") or row.get("has_quote"),
+                "has_executive_relationships": row.get("has_executive_relationships") or row.get("has executive relationships"),
+                "zendesk_executive_connect": row.get("zendesk_executive_connect") or row.get("zendesk executive connect") or row.get("executive_connect"),
                 "close_year_quarter": canonical_quarter(row.get("close_year_quarter"), closedate),
                 "d_score_latest__c": row.get("d_score_latest__c", ""), "date_label": row.get("date_label", "today"),
                 "opportunity_is_commissionable": row.get("opportunity_is_commissionable", "true").lower() in {"true", "1", "yes", "t"},
@@ -469,12 +489,13 @@ def load_sfdc_signed_export(path=None, content=None, filename=""):
 
 
 DRIVE_ROSTER = load_drive_hierarchy()
+SFDC_EXPORT_ROWS = load_sfdc_signed_export(SFDC_EXPORT_FILE) or []
 try:
     SFDC_ROWS = fetch_live()
 except Exception:
     # Local CSV remains a safe offline fallback when Salesforce CLI auth is
     # unavailable. It is never mixed with GTMI rows.
-    SFDC_ROWS = load_sfdc_signed_export(SFDC_EXPORT_FILE) or []
+    SFDC_ROWS = SFDC_EXPORT_ROWS
 if DRIVE_ROSTER:
     ROSTER = DRIVE_ROSTER
     # Never attach synthetic performance to real people. Actual performance
@@ -541,8 +562,22 @@ def get_forecast(q):
     if not name or not CLARI_FORECAST_FILE.exists():
         return {"name": name, "quarter": quarter, "quota": 0, "forecast": 0, "bookings": 0, "ai_target": 0, "ai_bookings": 0, "nb_target": 0, "nb_bookings": 0, "pipeline": 0, "pipeline_target": 0}
     with CLARI_FORECAST_FILE.open(newline="", encoding="utf-8-sig") as handle:
-        rows = csv.DictReader(handle)
-        row = next((r for r in rows if (r.get("NAME") or "").strip().casefold() == name.casefold() and canonical_quarter(r.get("YEAR_QUARTER")) == quarter), None)
+        rows = [r for r in csv.DictReader(handle) if canonical_quarter(r.get("YEAR_QUARTER")) == quarter]
+    if name.casefold() == "all":
+        def num(row, key):
+            try: return float(row.get(key) or 0)
+            except (TypeError, ValueError): return 0
+        quota = sum(num(row, "QUARTER_QUOTA") for row in rows)
+        bookings = sum(num(row, "SIGNED") for row in rows)
+        return {"name": "All authorized AEs", "quarter": quarter, "quota": quota,
+                "forecast": sum(num(row, "QUARTER_FORECAST") for row in rows),
+                "bookings": bookings, "ai_target": quota * 0.45,
+                "ai_bookings": sum(num(row, "AI_SIGNED") for row in rows),
+                "nb_target": quota * 0.25,
+                "nb_bookings": sum(num(row, "NB_SIGNED") for row in rows),
+                "pipeline": sum(num(row, "PIPELINE") for row in rows),
+                "pipeline_target": max(quota - bookings, 0) * 3}
+    row = next((r for r in rows if (r.get("NAME") or "").strip().casefold() == name.casefold()), None)
     if not row:
         return {"name": name, "quarter": quarter, "quota": 0, "forecast": 0, "bookings": 0, "ai_target": 0, "ai_bookings": 0, "nb_target": 0, "nb_bookings": 0, "pipeline": 0, "pipeline_target": 0}
     def num(key):
@@ -620,15 +655,42 @@ def get_directory():
 def get_pipeline(q):
     quarter = q.get("quarter")
     out = []
-    for r in (SFDC_ROWS if SFDC_ROWS else ROWS):
-        if not (r["opportunity_is_commissionable"] and r["product"] == "Total Booking" and is_pipeline_stage(r["stage_name"]) and r["product_arr_usd"] > 0
-                and r["opportunity_status"] == "Open"):
+    seen_s1 = set()
+    # The live Salesforce adapter can be limited to the current snapshot and
+    # therefore have no rows for a future quarter. Select the source per
+    # requested quarter so Next Quarter can still use the verified extract.
+    live_has_quarter = bool(SFDC_ROWS) and (
+        not quarter or any(canonical_quarter("", r.get("closedate")) == quarter for r in SFDC_ROWS)
+    )
+    source_rows = SFDC_ROWS if live_has_quarter else ROWS
+    for r in source_rows:
+        stage = (r["stage_name"] or "").strip()
+        is_s1 = bool(re.search(r"(?:^|\D)0*1(?:\D|$)", stage))
+        # Stage 1 is an early-signal list, not active pipeline: source rows
+        # can carry a product-level ARR and a stage label instead of the
+        # Total Booking/Open shape used by Stage 2–6 pipeline rows.
+        if not (r["opportunity_is_commissionable"]
+                and (r["product"] == "Total Booking" or is_s1)
+                and (is_pipeline_stage(stage) or is_s1)
+                and r["product_arr_usd"] > 0
+                and (is_s1 or r["opportunity_status"] == "Open")):
             continue
         s = scope_filter(r, q)
         if s is False:
             continue
-        if quarter and r["close_year_quarter"] != quarter:
-            continue
+        if quarter:
+            # My Deals quarter tabs are driven by the actual Salesforce
+            # CloseDate. Imported fiscal-quarter labels can be stale, so do
+            # not let them decide which tab receives an opportunity.
+            if canonical_quarter("", r["closedate"]) != quarter:
+                continue
+        if is_s1:
+            # Product-level extracts can repeat one Stage 1 opportunity.
+            # Keep one record per opportunity so the S1 list is truthful.
+            opportunity_key = r["crm_opportunity_id"] or r["opportunity_name"]
+            if opportunity_key in seen_s1:
+                continue
+            seen_s1.add(opportunity_key)
         out.append({
             "crm_opportunity_id": r["crm_opportunity_id"],
             "opportunity_name": r["opportunity_name"],
@@ -645,15 +707,25 @@ def get_pipeline(q):
             "gtm_team": r["gtm_team"],
             "vp_deal_forecast__c": r["vp_deal_forecast__c"],
             "manager_forecast__c": r["manager_forecast__c"],
-            "close_fiscal_quarter": r["close_year_quarter"],
+            "quote_status": r.get("quote_status"),
+            "has_executive_relationships": r.get("has_executive_relationships"),
+            "zendesk_executive_connect": r.get("zendesk_executive_connect"),
+            "economic_buyer_status": r.get("economic_buyer_status"),
+            "executive_sponsor_status": r.get("executive_sponsor_status"),
+            "close_fiscal_quarter": canonical_quarter("", r["closedate"]),
             "d_score_latest__c": r["d_score_latest__c"],
         })
     out.sort(key=lambda x: x["product_arr_usd"], reverse=True)
-    return out[:200]
+    # Do not truncate the scoped result: Stage 1 opportunities are included
+    # for the early-signal view and must remain visible for full/admin scope.
+    return out
 
 
 def get_metrics_summary(q):
     quarter = q.get("quarter", "FY2027Q3")
+    # Use the live Salesforce snapshot when it contains the requested quarter;
+    # otherwise use the verified Salesforce export for historical/future tabs.
+    sfdc_source = SFDC_ROWS if (SFDC_ROWS and any(r["close_year_quarter"] == quarter for r in SFDC_ROWS)) else SFDC_EXPORT_ROWS
     pipe = {"open_pipeline_total": 0, "open_pipeline_nb": 0, "open_pipeline_exp": 0,
             "open_pipeline_ai": 0, "open_deal_count": set(), "open_pipeline_nb_deal_count": set(),
             "open_pipeline_ai_deal_count": set()}
@@ -698,13 +770,13 @@ def get_metrics_summary(q):
     # Signed total. GTMI remains available for product-specific AI/NB
     # breakdowns. With no SFDC export yet, Salesforce-backed totals stay
     # empty rather than showing the wrong source.
-    if SFDC_ROWS:
+    if sfdc_source:
         pipe["open_pipeline_total"] = 0
         pipe["open_pipeline_nb"] = 0
         pipe["open_pipeline_exp"] = 0
         pipe["open_deal_count"] = set()
         pipe["open_pipeline_nb_deal_count"] = set()
-        for r in SFDC_ROWS:
+        for r in sfdc_source:
             if not is_pipeline_stage(r["stage_name"]) or r["close_year_quarter"] != quarter or scope_filter(r, q) is False:
                 continue
             amount = r["product_arr_usd"]
@@ -735,11 +807,11 @@ def get_metrics_summary(q):
         pipe["open_pipeline_nb"] += r["product_arr_usd"]
         pipe["open_pipeline_nb_deal_count"].add(r["crm_opportunity_id"])
 
-    if SFDC_ROWS:
+    if sfdc_source:
         book = {"bookings_total": 0, "bookings_nb": 0, "bookings_exp": 0,
                 "bookings_ai": 0, "bookings_deal_count": set(), "bookings_nb_deal_count": set(),
                 "bookings_ai_deal_count": set()}
-        for r in SFDC_ROWS:
+        for r in sfdc_source:
             if r["stage_name"] not in WON_STAGES or r["close_year_quarter"] != quarter or scope_filter(r, q) is False:
                 continue
             amount = r["product_booking_arr_usd"]
@@ -782,7 +854,8 @@ def get_metrics_summary(q):
     book["bookings_nb_deal_count"] = len(book["bookings_nb_deal_count"])
     book["bookings_ai_deal_count"] = len(book["bookings_ai_deal_count"])
     return {**{k: round(v, 2) if isinstance(v, float) else v for k, v in pipe.items()},
-            **{k: round(v, 2) if isinstance(v, float) else v for k, v in book.items()}}
+            **{k: round(v, 2) if isinstance(v, float) else v for k, v in book.items()},
+            "data_as_of": source_data_as_of()}
 
 
 def get_pipeline_by_product(q):
@@ -803,6 +876,46 @@ def get_pipeline_by_product(q):
            for v in agg.values()]
     out.sort(key=lambda x: x["total_arr"], reverse=True)
     return out
+
+
+def get_gtmi_pipeline_summary(q):
+    """Return the GTMI open-pipeline totals for a selected quarter.
+
+    This is intentionally separate from the Salesforce-backed main pipeline
+    summary. Next Quarter uses GTMI product ARR, while This Quarter keeps its
+    existing Salesforce source of truth.
+    """
+    quarter = q.get("quarter")
+    total = 0.0
+    ai = 0.0
+    nb = 0.0
+    deals = set()
+    ai_deals = set()
+    nb_deals = set()
+    for r in ROWS:
+        if (scope_filter(r, q) is False or
+                (quarter and r["close_year_quarter"] != quarter) or
+                (r["date_label"] or "today").strip().lower() != "today" or
+                not r["opportunity_is_commissionable"] or
+                r["opportunity_status"] != "Open" or
+                not is_pipeline_stage(r["stage_name"]) or
+                r["product_arr_usd"] <= 0):
+            continue
+        amount = r["product_arr_usd"]
+        opp_id = r["crm_opportunity_id"]
+        total += amount
+        deals.add(opp_id)
+        if r["product"] in AI_PRODUCTS:
+            ai += amount
+            ai_deals.add(opp_id)
+        if r["opportunity_type"] == "New Business":
+            nb += amount
+            nb_deals.add(opp_id)
+    return {
+        "total": round(total, 2), "ai": round(ai, 2), "nb": round(nb, 2),
+        "deal_count": len(deals), "ai_deal_count": len(ai_deals),
+        "nb_deal_count": len(nb_deals), "quarter": quarter,
+    }
 
 
 def get_stage_distribution(q):
@@ -1038,6 +1151,10 @@ class Handler(BaseHTTPRequestHandler):
             if not has_scope(q):
                 return self._send({"error": "scope required"}, 400)
             return self._send(get_pipeline_by_product(q))
+        if path == "/api/gtmi_pipeline_summary":
+            if not has_scope(q):
+                return self._send({"error": "scope required"}, 400)
+            return self._send(get_gtmi_pipeline_summary(q))
         if path == "/api/metrics/summary":
             if not has_scope(q):
                 return self._send({"error": "scope required"}, 400)
@@ -1212,7 +1329,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     port = int(os.environ.get("PORT", "8080"))
-    print(f"SalesPilot MOCK server → http://localhost:{port}")
+    print(f"AE Compass local data server → http://localhost:{port}")
     print(f"  {len(ROSTER)} Workday AEs loaded, {len(ROWS)} pipeline rows")
     print(f"  User edits persist to {STATE_FILE.name}")
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()

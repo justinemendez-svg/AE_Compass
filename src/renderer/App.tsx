@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import AdminPanel, { AdminSection } from './pages/AdminPanel';
-import AECompassVision from './pages/AECompassVision';
+import AECompass from './pages/AECompass';
 import LoginScreen from './components/LoginScreen';
 import Sidebar from './components/Sidebar';
 import { AccessProfile, clearSession, getSessionId, loadProfiles, profileFromIdentity, recordVisit, saveProfiles, setSessionId } from './auth';
@@ -81,7 +81,6 @@ export default function App() {
     api.getRoster().then(setRoster).catch(() => setRoster([])).finally(() => setRosterLoading(false));
   }, [currentUser?.id, currentUser?.role]);
 
-  if (window.location.pathname === '/vision') window.history.replaceState({}, '', '/compass');
   const login = (profile: AccessProfile) => {
     setProfiles((existing) => {
       const next = existing.some((entry) => entry.id === profile.id)
@@ -97,7 +96,7 @@ export default function App() {
   if (authLoading) return <div className="flex min-h-screen items-center justify-center bg-surface-secondary text-sm text-gray-500">Checking your company identity…</div>;
   if (window.location.pathname === '/compass') {
     if (!currentUser) return <LoginScreen profiles={profiles} onLogin={login} />;
-    return <AECompassVision viewerName={currentUser.name} dark={theme === 'dark'} toggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} onLogout={() => { clearSession(); setSession(null); window.location.href = '/?landing=1'; }} />;
+    return <AECompass viewerName={currentUser.name} isAdmin={currentUser.role === 'Admin' || currentUser.accessLevel === 'full'} dark={theme === 'dark'} toggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} onLogout={() => { clearSession(); setSession(null); window.location.href = '/?landing=1'; }} />;
   }
   if (!currentUser) return <LoginScreen profiles={profiles} onLogin={login} />;
 

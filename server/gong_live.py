@@ -19,6 +19,21 @@ def _text(value) -> str:
     return str(value or "").strip()
 
 
+def _field_text(value) -> str:
+    raw = _text(value)
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw
+    if isinstance(parsed, list):
+        return " ".join(_text(item) for item in parsed if _text(item))
+    if isinstance(parsed, dict):
+        return _text(parsed.get("text") or parsed.get("summary") or raw)
+    return _text(parsed)
+
+
 def _days_since(value):
     if not value:
         return None
@@ -48,11 +63,11 @@ def _signals(records):
     for opp_id, rows in by_opp.items():
         rows.sort(key=lambda row: _text(row.get("planned_start_datetime")), reverse=True)
         latest = rows[0]
-        combined = " ".join(_text(row.get(key)) for row in rows for key in (
+        combined = " ".join(_field_text(row.get(key)) for row in rows for key in (
             "call_spotlight_brief", "call_spotlight_next_steps", "call_spotlight_key_points", "transcript"
         )).lower()
         days = _days_since(latest.get("planned_start_datetime"))
-        has_next_steps = any(_text(row.get("call_spotlight_next_steps")) for row in rows)
+        has_next_steps = any(_field_text(row.get("call_spotlight_next_steps")) for row in rows)
         competitors = sorted({term.title() for term in competitor_terms if term in combined})
         objections = any(term in combined for term in objection_terms)
         buyer_signal = any(term in combined for term in buyer_terms)
@@ -78,8 +93,9 @@ def _signals(records):
             "call_count": len(rows),
             "last_call_at": latest.get("planned_start_datetime"),
             "last_call_title": latest.get("title"),
-            "last_call_next_steps": latest.get("call_spotlight_next_steps"),
-            "last_call_key_points": latest.get("call_spotlight_key_points"),
+            "last_call_brief": _field_text(latest.get("call_spotlight_brief")),
+            "last_call_next_steps": _field_text(latest.get("call_spotlight_next_steps")),
+            "last_call_key_points": _field_text(latest.get("call_spotlight_key_points")),
             "days_since_call": days,
             "has_next_steps": has_next_steps,
             "competitors": competitors,
@@ -113,7 +129,7 @@ def fetch_gong_signals(opportunity_ids: list[str]) -> dict:
             text=True,
             capture_output=True,
             # Never let a Snowflake SSO/network issue block the dashboard.
-            timeout=12,
+            timeout=30,
             env=env,
         )
         payload = json.loads(completed.stdout.strip().splitlines()[-1]) if completed.stdout.strip() else {"error": completed.stderr.strip()}

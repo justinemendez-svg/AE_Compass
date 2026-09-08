@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from typing import Any, Callable
 
@@ -24,8 +25,8 @@ _client = None
 _backend = None  # "codex" | "openai"
 _client_lock = threading.Lock()
 
-_MAX_TOOL_STEPS = 5
-_MAX_TOOL_CALLS = 12
+_MAX_TOOL_STEPS = 3
+_MAX_TOOL_CALLS = 8
 _MAX_TURNS = 10
 _MAX_CHARS = 800
 _MAX_DEALS = 200
@@ -86,7 +87,7 @@ def _get_client():
                     api_key=access,
                     base_url=_CODEX_BASE_URL,
                     default_headers={"chatgpt-account-id": acct, "OpenAI-Beta": "responses=experimental"},
-                    timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "45")),
+                    timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "25")),
                     max_retries=1,
                 )
                 _backend = "codex"
@@ -94,7 +95,7 @@ def _get_client():
                 _client = OpenAI(
                     api_key=api_key,
                     base_url=os.environ.get("OPENAI_BASE_URL", "").strip() or "https://api.openai.com/v1",
-                    timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "45")),
+                    timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "25")),
                     max_retries=1,
                 )
                 _backend = "openai"
@@ -114,7 +115,8 @@ def _api_error(exc: Exception) -> Exception:
 
 def _rows(viewer: str, quarter: str):
     import mock_server
-    return mock_server.get_pipeline({"owner_name": viewer, "quarter": quarter})
+    scope = {"all": "1", "quarter": quarter} if viewer.strip().casefold() == "all" else {"owner_name": viewer, "quarter": quarter}
+    return mock_server.get_pipeline(scope)
 
 
 def _t_deal_context(viewer: str, quarter: str, args: dict) -> dict:
@@ -142,7 +144,8 @@ def _t_deal_context(viewer: str, quarter: str, args: dict) -> dict:
 
 def _t_metrics(viewer: str, quarter: str, args: dict) -> dict:
     import mock_server
-    m = mock_server.get_metrics_summary({"owner_name": viewer, "quarter": quarter})
+    scope = {"all": "1", "quarter": quarter} if viewer.strip().casefold() == "all" else {"owner_name": viewer, "quarter": quarter}
+    m = mock_server.get_metrics_summary(scope)
     facts = [
         {"fact_id": "metric_bookings_total", "label": "Signed this quarter", "value": m.get("bookings_total", 0)},
         {"fact_id": "metric_open_pipeline_total", "label": "Open pipeline", "value": m.get("open_pipeline_total", 0)},
@@ -213,6 +216,105 @@ def _t_search(viewer: str, quarter: str, args: dict) -> dict:
     return {"matches": out, "facts": [{"fact_id": d["fact_id"], "opportunity": d["opportunity"]} for d in out]}
 
 
+def _t_gong_calls(viewer: str, quarter: str, args: dict) -> dict:
+    """Read verified Gong signals by Salesforce opportunity ID.
+
+    Gong is intentionally queried through AE Compass' existing read-only
+    bridge. The Claude/GTM repo remains the connector reference; it is not
+    imported into the assistant runtime.
+    """
+    import mock_server
+
+    rows = _rows(viewer, quarter)
+    requested_id = str(args.get("opportunity_id") or "").strip()
+    keyword = str(args.get("keyword") or "").strip().casefold()
+    if requested_id and not re.fullmatch(r"[A-Za-z0-9]{15,18}", requested_id):
+        requested_id = ""
+
+    if requested_id:
+        candidates = [r for r in rows if r.get("crm_opportunity_id") == requested_id]
+    elif keyword:
+        candidates = [
+            r for r in rows
+            if keyword in " ".join([
+                str(r.get("opportunity_name") or ""),
+                str(r.get("crm_account_name") or ""),
+                str(r.get("crm_opportunity_id") or ""),
+            ]).casefold()
+        ]
+    else:
+        # Keep the on-demand Snowflake query bounded. The model should use
+        # opportunity_id or keyword when the user names a specific deal.
+        candidates = rows[:50]
+
+    ids = [str(r.get("crm_opportunity_id") or "").strip() for r in candidates]
+    ids = [value for value in ids if value]
+    payload = mock_server.fetch_gong_signals(ids)
+    signals = payload.get("signals") or []
+    by_id = {str(r.get("crm_opportunity_id")): r for r in candidates}
+    facts = []
+    for signal in signals:
+        opp_id = str(signal.get("crm_opportunity_id") or "")
+        row = by_id.get(opp_id, {})
+        facts.append({
+            "fact_id": f"gong_{opp_id}",
+            "opportunity": row.get("opportunity_name") or opp_id,
+            "amount": row.get("product_arr_usd", 0),
+            "stage": row.get("stage_name"),
+            "close_date": row.get("closedate"),
+        })
+    return {
+        "source": "verified_gong",
+        "connected": bool(payload.get("connected")),
+        "message": payload.get("message"),
+        "signals": signals,
+        "facts": facts,
+    }
+
+
+def _t_gtm_context(viewer: str, quarter: str, args: dict) -> dict:
+    """Read current GTMI product context through the GTM Ops connector."""
+    from gtm_live import fetch_gtm_context
+
+    rows = _rows(viewer, quarter)
+    requested_id = str(args.get("opportunity_id") or "").strip()
+    keyword = str(args.get("keyword") or "").strip().casefold()
+    if requested_id and not re.fullmatch(r"[A-Za-z0-9]{15,18}", requested_id):
+        requested_id = ""
+    if requested_id:
+        candidates = [r for r in rows if r.get("crm_opportunity_id") == requested_id]
+    elif keyword:
+        candidates = [r for r in rows if keyword in " ".join([
+            str(r.get("opportunity_name") or ""),
+            str(r.get("crm_account_name") or ""),
+            str(r.get("crm_opportunity_id") or ""),
+            str(r.get("product") or ""),
+        ]).casefold()]
+    else:
+        candidates = rows[:50]
+    ids = [str(r.get("crm_opportunity_id") or "").strip() for r in candidates if r.get("crm_opportunity_id")]
+    payload = fetch_gtm_context(ids)
+    records = payload.get("records") or []
+    facts = []
+    for index, record in enumerate(records):
+        opp_id = str(record.get("crm_opportunity_id") or "")
+        row = next((r for r in candidates if str(r.get("crm_opportunity_id")) == opp_id), {})
+        facts.append({
+            "fact_id": f"gtm_{index + 1}_{opp_id}",
+            "opportunity": row.get("opportunity_name") or opp_id,
+            "amount": record.get("product_arr_usd", 0),
+            "stage": record.get("stage_name"),
+            "close_date": row.get("closedate"),
+        })
+    return {
+        "source": "verified_gtm_ops_gtmi",
+        "connected": bool(payload.get("connected")),
+        "message": payload.get("message"),
+        "records": records,
+        "facts": facts,
+    }
+
+
 def _t_roster(viewer: str, quarter: str, args: dict) -> dict:
     import mock_server
     return {"roster": mock_server.get_roster(), "facts": []}
@@ -251,6 +353,20 @@ _TOOLS: list[dict[str, Any]] = [
                                  "type": {"type": "string", "description": "Opportunity type, e.g. Expansion, New Business, Renewal. Pass empty string if no type filter."}},
                    "required": ["keyword", "type"], "additionalProperties": False},
      "fn": _t_search},
+    {"name": "query_gong_calls",
+     "description": "Read verified Gong call briefs, key points, objections, and next steps matched by Salesforce opportunity ID. Use this whenever the user asks about a call, Gong, call summary, customer conversation, next step, or what happened on a named deal. Pass opportunity_id when the user provides one; otherwise pass the opportunity/account keyword.",
+     "parameters": {"type": "object",
+                   "properties": {"opportunity_id": {"type": "string", "description": "The 15- or 18-character Salesforce opportunity ID, if known; otherwise empty string."},
+                                 "keyword": {"type": "string", "description": "Opportunity or account name to match; use this when no ID is known."}},
+     "required": ["opportunity_id", "keyword"], "additionalProperties": False},
+     "fn": _t_gong_calls},
+    {"name": "query_gtm_context",
+     "description": "Read verified GTMI opportunity/product context through the existing GTM Ops repository connector. Use this for AI product, New Business product, pipeline product, GTMI, or when the user asks you to check the GTM repo. Pass opportunity_id for a specific deal or keyword for an opportunity/account/product; use empty strings to inspect the authorized quarter context.",
+     "parameters": {"type": "object",
+                   "properties": {"opportunity_id": {"type": "string", "description": "The Salesforce opportunity ID, if known; otherwise empty string."},
+                                 "keyword": {"type": "string", "description": "Opportunity, account, or product keyword; otherwise empty string."}},
+                   "required": ["opportunity_id", "keyword"], "additionalProperties": False},
+     "fn": _t_gtm_context},
     {"name": "get_roster",
      "description": "Read the AE roster (team directory). Takes no arguments. Use for team / roster / who-on-my-team questions.",
      "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
@@ -308,10 +424,16 @@ def _history_pairs(history) -> list[dict[str, str]]:
 
 _SYSTEM = (
     "You are Ask Compass, a calm, encouraging, and analytical deal co-pilot for Zendesk AEs. "
-    "You have tools that read the signed-in AE's authorized dashboard data: their deals, metrics, forecast, "
-    "stage mix, linearity, pipeline creation, roster, and deal search. Use the tools to pull real data before "
+    "You have tools that read the signed-in AE's authorized dashboard data: Salesforce opportunity facts and bookings, "
+    "GTMI pipeline/product context, Clari quota and forecast, Gong call briefs and next steps, stage mix, linearity, "
+    "pipeline creation, roster, and deal search. Use the tools to pull real data before "
     "answering a data question — never answer from memory. Analyze and connect the dots across what the tools return, "
     "reference real numbers, name specific opportunities when useful, say why it matters, and suggest one practical next move. "
+    "Source rules: use Clari for quota and forecast; use Salesforce-backed data for opportunity facts, signed bookings, "
+    "and the dashboard's main pipeline; use GTMI only for its product-qualified pipeline context; when the question is "
+    "about AI, New Business, product mix, pipeline product, or GTMI, call query_gtm_context so the answer is checked "
+    "against the GTM Ops repository connector; use Gong only when its "
+    "verified opportunity-ID match returns a call. Never treat a missing Gong result as proof that no call exists. "
     "If evidence is missing, say so clearly. Never produce SQL, URLs, CRM IDs, or code. "
     "When you have everything you need and are ready to give the final answer (no more tool calls), respond with ONLY a "
     "JSON object: {\"answer\": string, \"fact_ids\": [strings drawn only from the fact_ids the tools returned]}. No prose outside the JSON."
