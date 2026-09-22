@@ -102,6 +102,12 @@ def uploads():
     return _json(backend.STATE.get("uploads", []))
 
 
+@app.post("/api/admin/verify")
+def verify_admin():
+    data = request.get_json(silent=True) or {}
+    return _json({"valid": backend.verify_admin_password(str(data.get("password") or ""))})
+
+
 @app.post("/api/admin/upload")
 def admin_upload():
     upload = request.files.get("file")

@@ -39,6 +39,7 @@ STATE_DIR = Path(os.environ.get("AE_COMPASS_STATE_DIR", str(Path(__file__).paren
 STATE_FILE = STATE_DIR / "mock_state.json"
 UPLOAD_DIR = STATE_DIR / "uploads"
 LOCAL_AUTH_EMAIL = os.environ.get("AE_COMPASS_LOCAL_EMAIL", "justine.mendez@zendesk.com").strip().lower()
+ADMIN_PASSWORD = os.environ.get("AE_COMPASS_ADMIN_PASSWORD", "")
 DEFAULT_DATA_DIR = Path("/Users/justine.mendez/Library/CloudStorage/GoogleDrive-justine.mendez@zendesk.com/Shared drives/GTM Ops/APAC/AE Compass")
 DATA_DIR = Path(os.environ.get("AE_COMPASS_DATA_DIR", str(DEFAULT_DATA_DIR))).expanduser()
 DRIVE_HIERARCHY_FILE = DATA_DIR / "workday_hierarchy_chris_donato.csv"
@@ -159,6 +160,10 @@ def auth_identity(handler):
         if email == expected:
             return {"authenticated": True, "email": email, "name": person["ae_name"], "subject_id": person["user_id"], "role": "AE", "access_level": "scoped", "source": source}
     return {"authenticated": False, "email": email, "name": None, "subject_id": None, "role": None, "access_level": None, "source": source}
+
+
+def verify_admin_password(password):
+    return bool(ADMIN_PASSWORD) and password == ADMIN_PASSWORD
 
 # ─── FISCAL CALENDAR ──────────────────────────────────────────────────────────
 QUARTERS = ["FY2027Q1", "FY2027Q2", "FY2027Q3", "FY2027Q4"]
@@ -1318,7 +1323,7 @@ class Handler(BaseHTTPRequestHandler):
         data = self._body()
 
         if path == "/api/admin/verify":
-            return self._send({"valid": True})
+            return self._send({"valid": verify_admin_password(str(data.get("password") or ""))})
         if path == "/api/admin/upload":
             try:
                 global SFDC_ROWS

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Compass, Lock, AlertCircle, ArrowRight } from 'lucide-react';
-import { AccessProfile, authenticate, profileFromIdentity } from '../auth';
+import { AccessProfile, profileFromIdentity } from '../auth';
 import { api, DirectoryPerson, RosterAE } from '../data/api';
 
 interface Props { profiles: AccessProfile[]; onLogin: (profile: AccessProfile) => void; }
@@ -122,9 +122,10 @@ export default function LoginScreen({ profiles, onLogin }: Props) {
     chooseProfile(match);
   };
 
-  const openAdmin = () => {
-    const profile = authenticate(profiles, '', adminPassword);
-    if (!profile) { setError('Incorrect Admin password.'); return; }
+  const openAdmin = async () => {
+    const result = await api.verifyAdmin(adminPassword);
+    const profile = profiles.find((entry) => entry.active && entry.role === 'Admin');
+    if (!result.valid || !profile) { setError('Incorrect Admin password.'); return; }
     setError(''); onLogin(profile);
   };
 

@@ -27,7 +27,9 @@ const VISITS_KEY = 'ae-compass-visits';
 // AppFoundry authenticates through the signed-in identity header. A local
 // admin password may be supplied only through an ignored Vite environment
 // variable; no credential is committed or bundled by default.
-export const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || '';
+// Admin authentication is verified server-side. Never bundle the password in
+// the frontend; AppFoundry supplies AE_COMPASS_ADMIN_PASSWORD as a secret.
+export const ADMIN_PASSWORD = '';
 
 export interface VisitRecord {
   profileId: string;
@@ -95,8 +97,7 @@ export function loadVisits(): VisitRecord[] {
 }
 
 export function authenticate(profiles: AccessProfile[], email: string, password: string): AccessProfile | null {
-  if (!ADMIN_PASSWORD || password !== ADMIN_PASSWORD) return null;
-  return profiles.find((p) => p.active && p.role === 'Admin') || null;
+  return null;
 }
 
 export function defaultSalesProfile(profiles: AccessProfile[]): AccessProfile | null {
