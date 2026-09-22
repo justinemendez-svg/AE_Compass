@@ -53,9 +53,22 @@ export default function LoginScreen({ profiles, onLogin }: Props) {
     return all.filter((profile) => !term || `${profile.name} ${profile.email}`.toLowerCase().includes(term)).slice(0, 10);
   }, [profiles, roster, directory, profileSearch]);
 
-  const openSales = () => {
+  const openSales = async () => {
     setProfileSearch('');
     setProfileError('');
+    // In AppFoundry, the platform supplies the signed-in identity through
+    // /api/auth/me. Resolve it before showing the local email stand-in so
+    // admins can reach Data Management without a bundled password.
+    try {
+      const identity = await api.getAuthMe();
+      const profile = profileFromIdentity(identity);
+      if (profile) {
+        chooseProfile(profile);
+        return;
+      }
+    } catch {
+      // Fall through to the local/profile lookup with a useful message.
+    }
     setShowProfileAuth(true);
   };
 
