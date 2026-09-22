@@ -1,0 +1,12 @@
+.git
+.gitignore
+node_modules
+dist
+server/__pycache__
+server/mock_state.json
+server/uploads
+*.log
+.env
+.env.*
+runtime-data
+runtime-state

@@ -12,7 +12,7 @@ except ModuleNotFoundError:
 
 
 SOQL = """
-SELECT Id, Name, OwnerId, Owner.Name, StageName, Type, CloseDate,
+SELECT Id, Name, AccountId, Account.Name, OwnerId, Owner.Name, StageName, Type, CloseDate,
        Total_Commissionable_ARR_in_USD__c, Non_Commissionable__c,
        ForecastCategoryName
 FROM Opportunity
@@ -53,7 +53,8 @@ def fetch_live():
             "opportunity_owner_name": owner.get("Name") or "",
             "crm_opportunity_id": record.get("Id") or "",
             "opportunity_name": record.get("Name") or "",
-            "crm_account_name": "",
+            "crm_account_id": record.get("AccountId") or "",
+            "crm_account_name": (record.get("Account") or {}).get("Name") or "",
             "stage_name": stage,
             "opportunity_type": record.get("Type") or "",
             "opportunity_status": "Closed" if re.match(r"^0[78]", stage) else "Open",

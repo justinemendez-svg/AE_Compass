@@ -4,10 +4,10 @@ import {
   Command, Flame, Gauge, Moon, Search, Sparkles, Sun, Target,
   TrendingUp, AlertTriangle, Users, LogOut,
 } from 'lucide-react';
-import { api, MetricsSummary, ForecastSummary, GongSignal, PipelineDeal } from '../data/api';
+import { api, MetricsSummary, ForecastSummary, GongSignal, PipelineDeal, LandscapeAccount } from '../data/api';
 
 type Tone = 'green' | 'violet' | 'amber' | 'rose';
-type CompassView = 'My day' | 'My deals' | 'Progress';
+type CompassView = 'My day' | 'My deals' | 'Progress' | 'Account Landscape';
 type Period = 'This Q' | 'Next Q' | 'Full year';
 const CircleCheck = CheckCircle2;
 
@@ -47,6 +47,7 @@ type LiveCompassData = { forecast: ForecastSummary | null; metrics: MetricsSumma
 type FiscalYearQuarterData = { forecast: ForecastSummary; metrics: MetricsSummary };
 type DealCard = { name: string; account: string; amount: string; stage: string; health: string; tone: Tone; note: string; action: string; quarter: Period; crmOpportunityId?: string };
 const salesforceOpportunityUrl = (id?: string) => id ? `https://zendesk.my.salesforce.com/lightning/r/Opportunity/${encodeURIComponent(id)}/view` : null;
+const salesforceAccountUrl = (id?: string) => id ? `https://zendesk.lightning.force.com/lightning/r/Account/${encodeURIComponent(id)}/view` : null;
 const salesforceSearchUrl = (term: string) => `https://zendesk.my.salesforce.com/_ui/search/ui?searchTerm=${encodeURIComponent(term)}`;
 // Precise CRM record link when a matching live pipeline row is found, else a SFDC search by name.
 const cockpitCrmUrl = (pipeline: PipelineDeal[], name: string) => {
@@ -255,7 +256,41 @@ function ProgressView({ period, setPeriod, liveData, fiscalYearData }: { period:
 }
 
 
-function CompassSecondaryView({ view, activeDeal, setActiveDeal, period, setPeriod, liveData, fiscalYearData }: { view: CompassView; activeDeal: number; setActiveDeal: (value: number) => void; period: Period; setPeriod: (value: Period) => void; liveData: LiveCompassData; fiscalYearData: ForecastSummary[] }) {
+function CompassCheck({ liveData }: { liveData: LiveCompassData }) {
+  const activeDeals = liveData.pipeline.filter((row) => stageNumber(row) >= 2 && stageNumber(row) <= 6).length;
+  const closePlanCount = liveCockpitRows('Close-plan watch', liveData.pipeline).length;
+  const hygieneCount = liveCockpitRows('Deal hygiene', liveData.pipeline).length;
+  const aiCount = liveData.metrics?.open_pipeline_ai_deal_count ?? 0;
+  const nbCount = liveData.metrics?.open_pipeline_nb_deal_count ?? 0;
+  const title = activeDeals
+    ? `${activeDeals} active deal${activeDeals === 1 ? '' : 's'} need a clear next move.`
+    : 'No active deals matched for this quarter yet.';
+  const focus = closePlanCount
+    ? `${closePlanCount} close-plan signal${closePlanCount === 1 ? '' : 's'} need review before the quarter moves on.`
+    : hygieneCount
+      ? `${hygieneCount} hygiene signal${hygieneCount === 1 ? '' : 's'} need cleanup before the next forecast check.`
+      : 'Your current pipeline has no matching cockpit risks; keep the next dated step current.';
+  return <section className="mt-5 rounded-2xl border border-[#dfe9b4] bg-[#f7fbdc] p-5 shadow-[0_8px_30px_rgba(33,54,37,0.04)] dark:border-[#526238] dark:bg-[#27321e]"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#d9f579] text-[#31553b]">↗</div><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#5d7c39] dark:text-[#d9f579]">This week’s compass check</p><h2 className="mt-1 text-sm font-bold text-[#243d2b] dark:text-white">{title}</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-[#6e7e63] dark:text-[#c6d2bd]">{focus} AI and New Business coverage: {aiCount} AI and {nbCount} New Business open opportunit{aiCount + nbCount === 1 ? 'y' : 'ies'}.</p></div></div><div className="flex shrink-0 gap-2"><span className="rounded-full bg-white/75 px-3 py-2 text-[10px] font-bold text-[#6033bd] dark:bg-white/10 dark:text-[#d9caff]">AI · {aiCount} active</span><span className="rounded-full bg-white/75 px-3 py-2 text-[10px] font-bold text-[#9c6500] dark:bg-white/10 dark:text-[#f5d68b]">NB · {nbCount} active</span></div></div></section>;
+}
+
+function AccountLandscape({ accounts, connected, message, loading }: { accounts: LandscapeAccount[]; connected: boolean; message: string; loading: boolean }) {
+  const [accountTab, setAccountTab] = useState<'Customers' | 'New Business'>('Customers');
+  const [search, setSearch] = useState('');
+  const customers = accounts.filter((account) => account.account_type === 'Customer');
+  const prospects = accounts.filter((account) => account.account_type === 'Prospect');
+  const visibleAccounts = (accountTab === 'Customers' ? customers : prospects).filter((account) => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return true;
+    return [account.account_name, account.owner_name, account.current_product, account.vertical, account.top_3000, account.with_ela, account.cohorts, account.suite_plan, account.csm_health_status]
+      .some((value) => String(value || '').toLowerCase().includes(needle));
+  });
+  const money = (value: number | null) => value === null || value === undefined ? '—' : compactMoney(value);
+  const accountCard = (account: LandscapeAccount) => <article key={account.account_id} className="rounded-2xl border border-[#e5ebe2] bg-white p-5 shadow-[0_8px_30px_rgba(33,54,37,0.04)] dark:border-[#29352b] dark:bg-[#1a231c]"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><a href={salesforceAccountUrl(account.account_id)} target="_blank" rel="noreferrer" className="text-sm font-bold hover:underline">{account.account_name} ↗</a><p className="mt-1 text-[10px] text-[#879289]">{account.account_status || 'Status unavailable'} · {account.owner_name || 'Owner unavailable'}</p></div><span className="rounded-full bg-[#eef8dc] px-2.5 py-1 text-[10px] font-bold text-[#4b7853]">{account.account_type}</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><div><p className="label">ARR</p><p className="value">{money(account.arr)}</p></div><div><p className="label">Current product</p><p className="value">{account.current_product || 'Unavailable'}</p></div><div><p className="label">Vertical</p><p className="value">{account.vertical || 'Unavailable'}</p></div><div><p className="label">Top 3000</p><p className="value">{account.top_3000 || 'Unavailable'}</p></div><div><p className="label">With ELA</p><p className="value">{account.with_ela || 'Unavailable'}</p></div><div><p className="label">Cohorts</p><p className="value">{account.cohorts || 'Unavailable'}</p></div><div><p className="label">Support plan</p><p className="value">{account.suite_plan || 'Unavailable'}</p></div><div><p className="label">Account health</p><p className="value">{account.csm_health_status || 'Unavailable'}</p></div><div><p className="label">Support seats / max seats</p><p className="value">{account.support_seats ?? account.seats ?? '—'} / {account.max_seats ?? '—'}</p></div></div>{account.opportunities.length > 0 && <div className="mt-4 border-t border-[#eef1ed] pt-3 dark:border-[#29352b]"><p className="label">Existing opportunities</p><div className="mt-2 space-y-1.5">{account.opportunities.map((opportunity) => <a key={opportunity.id} href={salesforceOpportunityUrl(opportunity.id) || '#'} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-lg bg-[#fbfdf8] px-3 py-2 text-[10px] hover:bg-[#eef8dc] dark:bg-[#202b22]"><span className="truncate font-semibold">{opportunity.name}</span><span className="ml-3 shrink-0 text-[#78847b]">{opportunity.stage}</span></a>)}</div></div>}</article>;
+  return <div className="mx-auto max-w-[1320px] px-6 py-8 sm:px-10"><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#51865c]">Account intelligence</p><div className="mt-2 flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-3xl font-bold tracking-[-0.04em]">Account Landscape</h1><p className="mt-2 text-sm text-[#78847b]">Customers and prospects associated with the signed-in AE, using verified Salesforce and current-product data.</p></div><span className="rounded-full bg-[#eef8dc] px-3 py-2 text-[10px] font-bold text-[#4b7853]">Verified account data</span></div>{loading ? <VerifiedDataNotice title="Loading account data" message="Loading verified customer and prospect accounts…" /> : connected ? <><div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2"><button onClick={() => setAccountTab('Customers')} className={`rounded-full px-3 py-2 text-[10px] font-bold ${accountTab === 'Customers' ? 'bg-[#203b29] text-[#d9f579]' : 'border border-[#dfe8d7] bg-white text-[#718077] dark:border-[#344635] dark:bg-[#1a231c] dark:text-[#c8d4c7]'}`}>Customers <span className="ml-1 opacity-70">{customers.length}</span></button><button onClick={() => setAccountTab('New Business')} className={`rounded-full px-3 py-2 text-[10px] font-bold ${accountTab === 'New Business' ? 'bg-[#6033bd] text-white' : 'border border-[#ddd0ff] bg-white text-[#6033bd] dark:border-[#493a70] dark:bg-[#1a231c]'}`}>New Business <span className="ml-1 opacity-70">{prospects.length}</span></button></div><div className="relative w-full sm:max-w-[320px]"><Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#9aa59c]" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-lg border border-[#dfe8d7] bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-[#8fc45e] dark:border-[#344635] dark:bg-[#1a231c]" placeholder={`Search ${accountTab.toLowerCase()}...`} /></div></div><section className="mt-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-bold">{accountTab}</h2><p className="mt-1 text-xs text-[#879289]">{accountTab === 'Customers' ? 'Accounts that bought from us and their verified current-product coverage.' : 'New business accounts returned by the verified Salesforce and penetration feed.'}</p></div><span className="rounded-full bg-[#eef8dc] px-3 py-1.5 text-[10px] font-bold text-[#4b7853]">{visibleAccounts.length} shown</span></div><div className="space-y-3">{visibleAccounts.length ? visibleAccounts.map(accountCard) : <VerifiedDataNotice title={`No ${accountTab.toLowerCase()} found`} message={search ? 'No accounts match the current search.' : `No ${accountTab.toLowerCase()} accounts were returned for the signed-in AE from the verified account feed.`} />}</div></section></> : <VerifiedDataNotice title="No account data" message={message || 'No verified account data was returned for the signed-in AE.'} />}</div>;
+}
+
+function CompassSecondaryView({ view, activeDeal, setActiveDeal, period, setPeriod, liveData, fiscalYearData, accountLandscape }: { view: CompassView; activeDeal: number; setActiveDeal: (value: number) => void; period: Period; setPeriod: (value: Period) => void; liveData: LiveCompassData; fiscalYearData: ForecastSummary[]; accountLandscape: { accounts: LandscapeAccount[]; connected: boolean; message: string; loading: boolean } }) {
+  if (view === 'Account Landscape') return <AccountLandscape {...accountLandscape} />;
   const liveDeals = liveDealCards(liveData.pipeline);
   const deal = liveDeals[activeDeal];
   const displayDeals = liveDeals;
@@ -391,6 +426,7 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
   const [liveData, setLiveData] = useState<LiveCompassData>({ forecast: null, metrics: null, pipeline: [] });
   const [nextData, setNextData] = useState<LiveCompassData>({ forecast: null, metrics: null, pipeline: [], gtmiPipeline: null });
   const [fiscalYearData, setFiscalYearData] = useState<FiscalYearQuarterData[]>([]);
+  const [accountLandscape, setAccountLandscape] = useState<{ accounts: LandscapeAccount[]; connected: boolean; message: string; loading: boolean }>({ accounts: [], connected: false, message: '', loading: true });
   const liveDeals = liveDealCards(liveData.pipeline);
   const displayedDeals = liveDeals;
 
@@ -422,6 +458,10 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
     ]).then(([forecast, metrics]) => ({ forecast, metrics }))))
       .then((rows) => { if (active) setFiscalYearData(rows); })
       .catch(() => { if (active) setFiscalYearData([]); });
+    setAccountLandscape((current) => ({ ...current, loading: true }));
+    api.getAccountLandscape(isAdmin ? 'all' : viewerName)
+      .then((result) => { if (active) setAccountLandscape({ ...result, loading: false }); })
+      .catch(() => { if (active) setAccountLandscape({ accounts: [], connected: false, message: 'No verified account data was returned for the signed-in AE.', loading: false }); });
     return () => { active = false; };
   }, [viewerName, isAdmin]);
   const myDayCards = [
@@ -437,7 +477,7 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
       <aside className="fixed inset-y-0 left-0 hidden w-[248px] flex-col border-r border-[#e6ebe4] bg-white px-5 py-6 dark:border-[#29352b] dark:bg-[#1a231c] lg:flex">
         <div className="flex items-center gap-3"><div className="flex h-9 w-9 -rotate-6 items-center justify-center rounded-xl bg-[#d9f579] text-[#203b29] shadow-[3px_3px_0_#a6d894]">⌁</div><div><p className="text-sm font-bold tracking-tight">AE Compass</p><p className="text-[10px] text-[#8a958b]">your deal co-pilot</p></div></div>
         <div className="mt-10 space-y-1">
-          {['My day', 'My deals', 'Progress'].map((item, index) => <button key={item} onClick={() => setActiveView(item as CompassView)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold ${activeView === item ? 'bg-[#eef8dc] text-[#2e603d] dark:bg-[#293c29] dark:text-[#d9f579]' : 'text-[#7c887f] hover:bg-[#f5f7f3] dark:hover:bg-[#223024]'}`}><span className="w-4 text-center">{index === 0 ? '✦' : index === 1 ? '◌' : '↗'}</span>{item}</button>)}
+          {['My day', 'My deals', 'Progress', 'Account Landscape'].map((item, index) => <button key={item} onClick={() => setActiveView(item as CompassView)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold ${activeView === item ? 'bg-[#eef8dc] text-[#2e603d] dark:bg-[#293c29] dark:text-[#d9f579]' : 'text-[#7c887f] hover:bg-[#f5f7f3] dark:hover:bg-[#223024]'}`}><span className="w-4 text-center">{index === 0 ? '✦' : index === 1 ? '◌' : index === 2 ? '↗' : '◎'}</span>{item}</button>)}
         </div>
         <div className="mt-auto"><div className="rounded-2xl bg-[#203b29] p-4 text-white"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d9f579]">Compass tip</p><p className="mt-2 text-xs leading-relaxed text-white/75">The best next step is usually smaller than the whole deal.</p><button className="mt-3 flex items-center gap-1 text-[10px] font-bold text-[#d9f579]">Open my playbook <ArrowUpRight className="h-3 w-3" /></button></div></div>
       </aside>
@@ -456,7 +496,7 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
 
           {period !== 'Next Q' && <DealsNeedingYou deals={liveDeals} />}
 
-          {period !== 'Next Q' && <><section className="mt-5 rounded-2xl border border-[#dfe9b4] bg-[#f7fbdc] p-5 shadow-[0_8px_30px_rgba(33,54,37,0.04)] dark:border-[#526238] dark:bg-[#27321e]"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#d9f579] text-[#31553b]">↗</div><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#5d7c39] dark:text-[#d9f579]">{period === 'This Q' ? 'This week’s compass check' : period === 'Next Q' ? 'Next quarter runway' : 'Full-year compass check'}</p><h2 className="mt-1 text-sm font-bold text-[#243d2b] dark:text-white">{period === 'This Q' ? 'Create enough pipe to keep next quarter from becoming a plot twist.' : period === 'Next Q' ? 'Build quality pipe now, while there is still time to shape it.' : 'Keep signed revenue strong while creating the next wave of AI and New Business.'}</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-[#6e7e63] dark:text-[#c6d2bd]">{periodCopy[period].focus} AI and New Business are the two motions worth checking before Friday—not because you’re behind, but because early pipe gives both motions room to mature.</p></div></div><div className="flex shrink-0 gap-2"><span className="rounded-full bg-white/75 px-3 py-2 text-[10px] font-bold text-[#6033bd] dark:bg-white/10 dark:text-[#d9caff]">AI · 3 active lines</span><span className="rounded-full bg-white/75 px-3 py-2 text-[10px] font-bold text-[#9c6500] dark:bg-white/10 dark:text-[#f5d68b]">NB · build coverage</span></div></div></section>
+          {period !== 'Next Q' && <><CompassCheck liveData={liveData} />
 
           <section className="mt-5 grid gap-5">
             <div className="rounded-2xl border border-[#e5ebe2] bg-white p-5 shadow-[0_8px_30px_rgba(33,54,37,0.04)] dark:border-[#29352b] dark:bg-[#1a231c]"><div className="flex items-start justify-between"><div><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#8055e8]" /><h2 className="text-sm font-bold">Your next best moves</h2></div><p className="mt-1 text-xs text-[#879289]">Three actions with the clearest path to impact.</p></div><span className="rounded-full bg-[#f0f8d7] px-2.5 py-1 text-[10px] font-bold text-[#517344]">{liveDeals.length ? 'Live matched data' : 'Loading your deals'}</span></div><div className="mt-5 grid gap-3 md:grid-cols-3">{displayedDeals.slice(0, 3).map((item, index) => { const c = toneClasses[item.tone]; return <button key={item.name} onClick={() => setActiveDeal(index)} className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 ${activeDeal === index ? 'ring-2 ring-[#b6d874]' : ''} ${c.card}`}><div className="flex items-center justify-between"><span className={`flex h-6 w-6 items-center justify-center rounded-lg bg-white/80 text-[10px] font-bold ${c.text}`}>{index + 1}</span><ArrowUpRight className={`h-3.5 w-3.5 ${c.text}`} /></div><p className="mt-3 truncate text-xs font-bold">{item.name}</p><p className={`mt-1 text-[10px] font-semibold ${c.text}`}>{item.action}</p><p className="mt-3 text-[10px] leading-relaxed text-[#738078]">{item.note}</p><a href={salesforceOpportunityUrl(item.crmOpportunityId) || salesforceSearchUrl(item.name)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`mt-3 inline-flex items-center gap-1 text-[10px] font-bold ${c.text} hover:underline`}>Open in CRM <ArrowUpRight className="h-3 w-3" /></a></button> })}</div></div>
@@ -466,7 +506,7 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
 
 
           </>}<div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-[#cddbc7] bg-[#fbfdf8] px-4 py-3 text-[10px] text-[#78867b] dark:border-[#344635] dark:bg-[#172018]"><span className="flex items-center gap-2"><Users className="h-3.5 w-3.5 text-[#5c8a64]" /> {liveData.pipeline.length ? 'Matched to your profile and current-quarter data' : 'Reading your profile and current-quarter data'}</span><span className="flex items-center gap-1 font-semibold text-[#5c8a64]"><Calendar className="h-3 w-3" /> Source: Workday · Clari · GTMI · Salesforce</span></div>
-        </div> : <CompassSecondaryView view={activeView} activeDeal={activeDeal} setActiveDeal={setActiveDeal} period={period} setPeriod={setPeriod} liveData={period === 'Next Q' ? nextData : liveData} fiscalYearData={fiscalYearData} />}
+        </div> : <CompassSecondaryView view={activeView} activeDeal={activeDeal} setActiveDeal={setActiveDeal} period={period} setPeriod={setPeriod} liveData={period === 'Next Q' ? nextData : liveData} fiscalYearData={fiscalYearData} accountLandscape={accountLandscape} />}
       </main>
       <FloatingCompass viewerName={viewerName} isAdmin={isAdmin} pipelineCount={liveData.pipeline.length} />
     </div>

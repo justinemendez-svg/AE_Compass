@@ -69,6 +69,48 @@ export interface PipelineDeal {
   d_score_latest__c: string | null;
 }
 
+export interface LandscapeOpportunity {
+  id: string;
+  name: string;
+  stage: string;
+  arr: number | null;
+  close_date: string;
+  status: string;
+}
+
+export interface LandscapeAccount {
+  account_id: string;
+  account_name: string;
+  owner_name: string;
+  owner_id: string;
+  account_type: 'Customer' | 'Prospect' | string;
+  account_status: string;
+  arr: number | null;
+  bullseye_recommendation: string;
+  bullseye_reason: string;
+  bullseye_tier: string;
+  bullseye_updated_at: string;
+  current_product: string;
+  vertical: string;
+  top_3000: string;
+  with_ela: string;
+  cohorts: string;
+  suite_plan: string | null;
+  csm_health_status: string;
+  avg_monthly_tickets: number | null;
+  seats: number | null;
+  support_seats: number | null;
+  max_seats: number | null;
+  opportunities: LandscapeOpportunity[];
+  source: string;
+}
+
+export interface AccountLandscapeResponse {
+  connected: boolean;
+  accounts: LandscapeAccount[];
+  message: string;
+}
+
 export interface MetricsSummary {
   open_pipeline_total: number;
   open_pipeline_nb: number;
@@ -190,6 +232,8 @@ export const api = {
   getRoster: () => fetchJSON<RosterAE[]>('/roster'),
 
   getDirectory: () => fetchJSON<DirectoryPerson[]>('/directory'),
+
+  getAccountLandscape: (owner_name?: string) => fetchJSON<AccountLandscapeResponse>('/account_landscape', owner_name ? { owner_name } : undefined),
 
   getPipeline: (params: { owner_id?: string; owner_name?: string; mgr_team?: string; dir_team?: string; vp_team?: string; svp_name?: string; all?: string; quarter?: string }) =>
     fetchJSON<PipelineDeal[]>('/pipeline', params as Record<string, string>),

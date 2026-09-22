@@ -17,6 +17,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    strictPort: true,
     proxy: {
       '/api': {
         target: `http://localhost:${process.env.AE_COMPASS_API_PORT || '8080'}`,

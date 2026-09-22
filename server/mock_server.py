@@ -33,14 +33,18 @@ from quarter_utils import canonical_quarter
 from sfdc_live import fetch_live
 from gong_live import fetch_gong_signals
 from assistant import AssistantUnavailable, answer_question
+from account_landscape import fetch_accounts, attach_opportunities
 
-STATE_FILE = Path(__file__).parent / "mock_state.json"
-UPLOAD_DIR = Path(__file__).parent / "uploads"
+STATE_DIR = Path(os.environ.get("AE_COMPASS_STATE_DIR", str(Path(__file__).parent))).expanduser()
+STATE_FILE = STATE_DIR / "mock_state.json"
+UPLOAD_DIR = STATE_DIR / "uploads"
 LOCAL_AUTH_EMAIL = os.environ.get("AE_COMPASS_LOCAL_EMAIL", "justine.mendez@zendesk.com").strip().lower()
-DRIVE_HIERARCHY_FILE = Path("/Users/justine.mendez/Library/CloudStorage/GoogleDrive-justine.mendez@zendesk.com/Shared drives/GTM Ops/APAC/AE Compass/workday_hierarchy_chris_donato.csv")
+DEFAULT_DATA_DIR = Path("/Users/justine.mendez/Library/CloudStorage/GoogleDrive-justine.mendez@zendesk.com/Shared drives/GTM Ops/APAC/AE Compass")
+DATA_DIR = Path(os.environ.get("AE_COMPASS_DATA_DIR", str(DEFAULT_DATA_DIR))).expanduser()
+DRIVE_HIERARCHY_FILE = DATA_DIR / "workday_hierarchy_chris_donato.csv"
 CLARI_FORECAST_FILE = DRIVE_HIERARCHY_FILE.parent / "clari_forecast_current_quarter.csv"
-PIPELINE_EXPORT_FILE = Path(os.environ.get("PIPELINE_EXPORT_FILE", str(DRIVE_HIERARCHY_FILE.parent / "gtmsi_pipeline_current_quarter.csv")))
-SFDC_EXPORT_FILE = Path(os.environ.get("SFDC_EXPORT_FILE", str(DRIVE_HIERARCHY_FILE.parent / "salesforce_opportunities_current_quarter.csv")))
+PIPELINE_EXPORT_FILE = Path(os.environ.get("PIPELINE_EXPORT_FILE", str(DATA_DIR / "gtmsi_pipeline_current_quarter.csv"))).expanduser()
+SFDC_EXPORT_FILE = Path(os.environ.get("SFDC_EXPORT_FILE", str(DATA_DIR / "salesforce_opportunities_current_quarter.csv"))).expanduser()
 WORKDAY_USERS = []
 
 def source_data_as_of():
@@ -652,6 +656,16 @@ def get_directory():
     return directory
 
 
+def get_account_landscape(q):
+    owner_name = (q.get("owner_name") or "").strip()
+    accounts = fetch_accounts(owner_name)
+    return {
+        "connected": bool(accounts),
+        "accounts": attach_opportunities(accounts, SFDC_ROWS or SFDC_EXPORT_ROWS),
+        "message": "Salesforce Account + Bullseye fields loaded." if accounts else "Bullseye account data is not available in the local Salesforce connection.",
+    }
+
+
 def get_pipeline(q):
     quarter = q.get("quarter")
     out = []
@@ -1143,6 +1157,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(get_roster())
         if path == "/api/directory":
             return self._send(get_directory())
+        if path == "/api/account_landscape":
+            return self._send(get_account_landscape(q))
         if path == "/api/pipeline":
             return self._send(get_pipeline(q))
         if path == "/api/bookings":

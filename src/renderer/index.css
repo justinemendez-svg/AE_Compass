@@ -204,4 +204,12 @@ main section.border-accent-cactus\/30 > :nth-child(2) { display: none; }
   .status-red {
     @apply bg-red-50 text-red-700 border-red-200;
   }
+
+  .label {
+    @apply text-[9px] font-bold uppercase tracking-[0.12em] text-[#9aa59c];
+  }
+
+  .value {
+    @apply mt-1 text-[11px] font-semibold text-[#36473b] dark:text-white;
+  }
 }
