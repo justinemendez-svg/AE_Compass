@@ -55,6 +55,41 @@ def source_data_as_of():
         return None
     return datetime.datetime.fromtimestamp(max(timestamps)).isoformat(timespec="seconds")
 
+
+SOURCE_FILE_PURPOSES = {
+    "workday_hierarchy_chris_donato.csv": "Workday hierarchy and signed-in user scope",
+    "clari_forecast_current_quarter.csv": "Clari quota, forecast, and quarterly targets",
+    "gtmsi_pipeline_current_quarter.csv": "GTM/Snowflake pipeline and product context",
+    "salesforce_opportunities_current_quarter.csv": "Salesforce opportunities and signed bookings",
+    "AE_Compass_AppFoundry_Data.zip": "Slim AppFoundry deployment bundle",
+}
+
+
+def data_source_inventory():
+    """Return a safe, read-only inventory of the configured local data folder."""
+    files = []
+    if DATA_DIR.exists():
+        for path in sorted(DATA_DIR.iterdir(), key=lambda item: item.name.lower()):
+            if not path.is_file() or path.name.startswith("."):
+                continue
+            try:
+                stat = path.stat()
+                files.append({
+                    "filename": path.name,
+                    "purpose": SOURCE_FILE_PURPOSES.get(path.name, "Additional AE Compass source file"),
+                    "size_bytes": stat.st_size,
+                    "modified_at": datetime.datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat(timespec="seconds"),
+                    "downloadable": path.suffix.lower() in {".csv", ".tsv", ".zip", ".json"},
+                })
+            except OSError:
+                continue
+    return {
+        "directory": str(DATA_DIR),
+        "exists": DATA_DIR.exists(),
+        "source_as_of": source_data_as_of(),
+        "files": files,
+    }
+
 def workday_access_type(user):
     title = (user.get("JOB_TITLE") or user.get("BUSINESS_TITLE") or "").lower()
     level = (user.get("MANAGEMENT_LEVEL") or "").lower()
@@ -1094,6 +1129,23 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_data_file(self, filename):
+        """Serve one allow-listed file from the configured data directory."""
+        safe_name = Path(filename).name
+        if safe_name != filename or safe_name.startswith("."):
+            return self._send({"error": "invalid filename"}, 400)
+        path = DATA_DIR / safe_name
+        if not path.is_file() or path.suffix.lower() not in {".csv", ".tsv", ".zip", ".json"}:
+            return self._send({"error": "data file not found"}, 404)
+        content_type = "application/zip" if path.suffix.lower() == ".zip" else "application/json" if path.suffix.lower() == ".json" else "text/csv"
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_name}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _body(self):
         length = int(self.headers.get("Content-Length", 0))
         if not length:
@@ -1133,6 +1185,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"status": "ok"})
         if path == "/api/auth/me":
             return self._send(auth_identity(self))
+        if path == "/api/admin/data-sources":
+            return self._send(data_source_inventory())
+        m = re.match(r"^/api/admin/data-download/(.+)$", path)
+        if m:
+            return self._send_data_file(m.group(1))
         if path == "/api/profile":
             email = (q.get("email") or "").strip().lower()
             for user in WORKDAY_USERS:

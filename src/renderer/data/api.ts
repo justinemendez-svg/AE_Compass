@@ -111,6 +111,21 @@ export interface AccountLandscapeResponse {
   message: string;
 }
 
+export interface DataSourceFile {
+  filename: string;
+  purpose: string;
+  size_bytes: number;
+  modified_at: string;
+  downloadable: boolean;
+}
+
+export interface DataSourceInventory {
+  directory: string;
+  exists: boolean;
+  source_as_of: string | null;
+  files: DataSourceFile[];
+}
+
 export interface MetricsSummary {
   open_pipeline_total: number;
   open_pipeline_nb: number;
@@ -395,4 +410,6 @@ export const api = {
     });
     return res.json();
   },
+
+  adminListDataSources: () => fetchJSON<DataSourceInventory>('/admin/data-sources'),
 };

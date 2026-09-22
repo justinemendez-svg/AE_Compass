@@ -13,7 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory
 try:
     from flask_cors import CORS
 except ImportError:  # local smoke tests can run with Flask alone
@@ -99,6 +99,22 @@ GETTERS = {
 @app.get("/api/admin/uploads")
 def uploads():
     return _json(backend.STATE.get("uploads", []))
+
+
+@app.get("/api/admin/data-sources")
+def data_sources():
+    return _json(backend.data_source_inventory())
+
+
+@app.get("/api/admin/data-download/<path:filename>")
+def data_download(filename):
+    safe_name = Path(filename).name
+    if safe_name != filename or safe_name.startswith("."):
+        return _json({"error": "invalid filename"}, 400)
+    path = backend.DATA_DIR / safe_name
+    if not path.is_file() or path.suffix.lower() not in {".csv", ".tsv", ".zip", ".json"}:
+        return _json({"error": "data file not found"}, 404)
+    return send_file(path, as_attachment=True, download_name=safe_name)
 
 
 @app.get("/api/gong")
