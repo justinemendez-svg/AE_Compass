@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+import datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -99,6 +100,39 @@ GETTERS = {
 @app.get("/api/admin/uploads")
 def uploads():
     return _json(backend.STATE.get("uploads", []))
+
+
+@app.post("/api/admin/upload")
+def admin_upload():
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return _json({"error": "Choose a file before uploading."}, 400)
+    filename = Path(upload.filename).name
+    if not filename.lower().endswith((".csv", ".tsv")):
+        return _json({"error": "Please upload a CSV or TSV file."}, 400)
+    content = upload.read()
+    backend.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{re.sub(r'[^A-Za-z0-9._-]', '_', filename)}"
+    (backend.UPLOAD_DIR / stored_name).write_bytes(content)
+    saved_to_source = backend.save_uploaded_source(filename, content)
+    text = content.decode("utf-8-sig", errors="replace")
+    lines = [line for line in text.splitlines() if line.strip()]
+    delimiter = "\t" if filename.lower().endswith(".tsv") else ","
+    headers = [item.strip() for item in (lines[0].split(delimiter) if lines else [])]
+    entry = {
+        "id": stored_name,
+        "filename": filename,
+        "stored_name": stored_name,
+        "dataset": request.form.get("dataset", "Pipeline & bookings"),
+        "row_count": max(len(lines) - 1, 0),
+        "headers": headers,
+        "size_bytes": len(content),
+        "uploaded_at": datetime.datetime.now().isoformat(),
+        "saved_to_source": saved_to_source,
+    }
+    backend.STATE["uploads"].insert(0, entry)
+    backend.save_state()
+    return _json({"status": "uploaded", "rows": entry["row_count"], "filename": filename, "dataset": entry["dataset"], "saved_to_source": saved_to_source})
 
 
 @app.get("/api/admin/data-sources")

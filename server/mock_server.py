@@ -63,6 +63,7 @@ SOURCE_FILE_PURPOSES = {
     "salesforce_opportunities_current_quarter.csv": "Salesforce opportunities and signed bookings",
     "AE_Compass_AppFoundry_Data.zip": "Slim AppFoundry deployment bundle",
 }
+SOURCE_FILE_NAMES = set(SOURCE_FILE_PURPOSES) - {"AE_Compass_AppFoundry_Data.zip"}
 
 
 def data_source_inventory():
@@ -89,6 +90,34 @@ def data_source_inventory():
         "source_as_of": source_data_as_of(),
         "files": files,
     }
+
+
+def reload_source_files():
+    """Reload dashboard source extracts after an approved local upload."""
+    global DRIVE_ROSTER, SFDC_EXPORT_ROWS, SFDC_ROWS, PIPELINE_EXPORT, ROSTER, ROWS
+    DRIVE_ROSTER = load_drive_hierarchy()
+    SFDC_EXPORT_ROWS = load_sfdc_signed_export(SFDC_EXPORT_FILE) or []
+    # An uploaded source file is authoritative for the local adapter. Live
+    # Salesforce remains opt-in and is never mixed into the uploaded snapshot.
+    SFDC_ROWS = SFDC_EXPORT_ROWS
+    PIPELINE_EXPORT = load_pipeline_export()
+    if DRIVE_ROSTER:
+        ROSTER = DRIVE_ROSTER
+    if PIPELINE_EXPORT:
+        ROWS = PIPELINE_EXPORT
+    return {"roster": len(ROSTER), "pipeline": len(ROWS), "signed": len(SFDC_ROWS)}
+
+
+def save_uploaded_source(filename, content):
+    """Persist an exact, known source filename into the configured data folder."""
+    safe_name = Path(filename).name
+    if safe_name != filename or safe_name not in SOURCE_FILE_NAMES:
+        return None
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    target = DATA_DIR / safe_name
+    target.write_bytes(content)
+    reload_source_files()
+    return safe_name
 
 def workday_access_type(user):
     title = (user.get("JOB_TITLE") or user.get("BUSINESS_TITLE") or "").lower()
@@ -1292,12 +1321,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"valid": True})
         if path == "/api/admin/upload":
             try:
+                global SFDC_ROWS
                 filename, content, dataset = self._multipart_upload()
                 if not filename.lower().endswith((".csv", ".tsv")):
                     return self._send({"error": "Please upload a CSV or TSV file."}, 400)
                 UPLOAD_DIR.mkdir(exist_ok=True)
                 stored_name = f"{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{re.sub(r'[^A-Za-z0-9._-]', '_', filename)}"
                 (UPLOAD_DIR / stored_name).write_bytes(content)
+                saved_to_source = save_uploaded_source(filename, content)
                 text = content.decode("utf-8-sig", errors="replace")
                 lines = [line for line in text.splitlines() if line.strip()]
                 headers = [item.strip() for item in (lines[0].split('\t' if filename.lower().endswith('.tsv') else ',') if lines else [])]
@@ -1306,14 +1337,14 @@ class Handler(BaseHTTPRequestHandler):
                 # soon as it is uploaded; GTMI uploads continue to feed open
                 # pipeline only. Detection is based on the actual fields,
                 # never on a user-selected label.
-                global SFDC_ROWS, ROWS
                 parsed_sfdc = load_sfdc_signed_export(content=content, filename=filename)
                 header_keys = {h.strip().lower() for h in headers}
                 if {"booking_arr__c", "booking_arr_c"} & header_keys:
                     SFDC_ROWS = parsed_sfdc or []
+                entry["saved_to_source"] = saved_to_source
                 STATE["uploads"].insert(0, entry)
                 save_state()
-                return self._send({"status": "uploaded", "rows": entry["row_count"], "filename": filename, "dataset": dataset})
+                return self._send({"status": "uploaded", "rows": entry["row_count"], "filename": filename, "dataset": dataset, "saved_to_source": saved_to_source})
             except Exception as exc:
                 return self._send({"error": str(exc) or "Upload failed."}, 400)
 
