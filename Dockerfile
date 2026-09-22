@@ -21,4 +21,4 @@ COPY server ./server
 COPY --from=frontend /app/dist/renderer ./dist/renderer
 RUN mkdir -p /app/runtime-data /app/runtime-state
 EXPOSE 8080
-CMD ["gunicorn", "--bind=0.0.0.0:8080", "--workers=2", "--threads=4", "--timeout=120", "server.app:app"]
+CMD ["sh", "-c", "gunicorn --bind=0.0.0.0:${PORT:-8080} --workers=2 --threads=4 --timeout=120 server.app:app"]
