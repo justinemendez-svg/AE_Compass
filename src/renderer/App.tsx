@@ -92,17 +92,26 @@ export default function App() {
     setSessionId(profile.id);
     setSession(profile.id);
   };
+  // Keep logout behavior identical from Admin and Compass: clear only the
+  // active session and return to the public landing page without reloading a
+  // stale authenticated route.
+  const logout = () => {
+    clearSession();
+    sessionStorage.removeItem('ae-compass-entry');
+    setSession(null);
+    setAdminSection('access');
+    window.history.replaceState({}, '', '/?landing=1');
+    setLandingMode(true);
+  };
   if (landingMode) return <LoginScreen profiles={profiles} onLogin={(profile) => { window.history.replaceState({}, '', '/'); setLandingMode(false); login(profile); }} />;
   if (authLoading) return <div className="flex min-h-screen items-center justify-center bg-surface-secondary text-sm text-gray-500">Checking your company identity…</div>;
   if (window.location.pathname === '/compass') {
     if (!currentUser) return <LoginScreen profiles={profiles} onLogin={login} />;
-    return <AECompass viewerName={currentUser.name} isAdmin={currentUser.role === 'Admin' || currentUser.accessLevel === 'full'} dark={theme === 'dark'} toggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} onLogout={() => { clearSession(); setSession(null); window.location.href = '/?landing=1'; }} />;
+    return <AECompass viewerName={currentUser.name} isAdmin={currentUser.role === 'Admin' || currentUser.accessLevel === 'full'} dark={theme === 'dark'} toggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} onLogout={logout} />;
   }
   if (!currentUser) return <LoginScreen profiles={profiles} onLogin={login} />;
 
   const updateProfiles = (next: AccessProfile[]) => { setProfiles(next); saveProfiles(next); };
-  const logout = () => { clearSession(); setSession(null); window.location.href = '/?landing=1'; };
-
   return <div className={`app-shell flex h-screen overflow-hidden bg-[#f7f8f5] text-[#17221c] dark:bg-[#111712] dark:text-[#f1f5ec] ${theme === 'dark' ? 'theme-dark' : 'theme-light'}`}>
     <Sidebar activeTab="admin" setActiveTab={() => undefined} theme={theme} toggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} currentUser={currentUser} onLogout={logout} adminSection={adminSection} setAdminSection={setAdminSection} />
     <main className="flex-1 overflow-y-auto">
