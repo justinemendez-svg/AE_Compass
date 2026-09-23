@@ -66,8 +66,21 @@ export default function LoginScreen({ profiles, onLogin }: Props) {
         chooseProfile(profile);
         return;
       }
+      // In production, never fall back to a manually selected profile. The
+      // AppFoundry identity is the authorization boundary; allowing the
+      // directory picker after an identity miss would let someone impersonate
+      // another AE. Manual profile lookup remains available only in local
+      // development, where it is explicitly a preview convenience.
+      if (!import.meta.env.DEV) {
+        setProfileError('Company sign-in is unavailable or this profile is not in the Workday directory. Please reopen AE Compass from the AppFoundry URL or contact the platform team.');
+        return;
+      }
     } catch {
       // Fall through to the local/profile lookup with a useful message.
+      if (!import.meta.env.DEV) {
+        setProfileError('Company sign-in is unavailable. Please reopen AE Compass from the AppFoundry URL or contact the platform team.');
+        return;
+      }
     }
     setShowProfileAuth(true);
   };
