@@ -563,11 +563,16 @@ def load_sfdc_signed_export(path=None, content=None, filename=""):
 
 DRIVE_ROSTER = load_drive_hierarchy()
 SFDC_EXPORT_ROWS = load_sfdc_signed_export(SFDC_EXPORT_FILE) or []
-try:
-    SFDC_ROWS = fetch_live()
-except Exception:
-    # Local CSV remains a safe offline fallback when Salesforce CLI auth is
-    # unavailable. It is never mixed with GTMI rows.
+if os.environ.get("AE_COMPASS_LIVE_SOURCES", "0").strip().lower() in {"1", "true", "yes", "on"}:
+    try:
+        SFDC_ROWS = fetch_live()
+    except Exception:
+        # Local CSV remains a safe offline fallback when Salesforce CLI auth is
+        # unavailable. It is never mixed with GTMI rows.
+        SFDC_ROWS = SFDC_EXPORT_ROWS
+else:
+    # AppFoundry starts in snapshot mode by default. Do not invoke the
+    # developer-only Salesforce CLI during container import/startup.
     SFDC_ROWS = SFDC_EXPORT_ROWS
 if DRIVE_ROSTER:
     ROSTER = DRIVE_ROSTER
