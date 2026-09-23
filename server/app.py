@@ -49,7 +49,15 @@ class _HeaderShim:
 
 @app.get("/api/health")
 def health():
-    return _json({"status": "ok", "app": "AE Compass", "environment": "appfoundry"})
+    inventory = backend.data_source_inventory()
+    return _json({
+        "status": "ok",
+        "app": "AE Compass",
+        "environment": "appfoundry",
+        "source_mode": inventory["source_mode"],
+        "source_as_of": inventory["source_as_of"],
+        "missing_source_files": inventory["missing_files"],
+    })
 
 
 @app.get("/api/auth/me")
@@ -165,6 +173,8 @@ def data_download(filename):
 @app.get("/api/gong")
 def gong():
     ids = [value for value in (request.args.get("opportunity_ids") or "").split("|") if value]
+    if os.environ.get("AE_COMPASS_LIVE_SOURCES", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+        return _json({"connected": False, "signals": [], "message": "Snapshot mode: Gong is disabled; uploaded dashboard data remains the source of truth."})
     return _json(backend.fetch_gong_signals(ids))
 
 

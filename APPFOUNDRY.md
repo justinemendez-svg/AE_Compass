@@ -24,6 +24,11 @@ existing Vision app and does not modify or import Vision code.
    `salesforce_opportunities_current_quarter.csv`.
    For Account Landscape/Bullseye, also provide
    `account_landscape_current.csv`.
+   These five files are the source of truth for the dashboard: Workday drives
+   identity and hierarchy, Clari drives quota/forecast, GTMSI drives product
+   pipeline context, Salesforce drives opportunities and signed bookings, and
+   the account snapshot drives Account Landscape/Bullseye. Ask Compass uses
+   the same server-side rows and does not invent a second data store.
 4. Add `OPENAI_API_KEY` as an AppFoundry secret and set
    `OPENAI_BASE_URL=https://ai-gateway.zende.sk/v1` for Ask Compass.
 5. Set the signed-in identity header mapping to `X-Forwarded-Email` if the
@@ -52,9 +57,12 @@ AppFoundry environment does not authorize the AI Gateway or the data sources,
 the dashboard can still deploy, but Ask Compass/live data will report a clear
 connection error rather than inventing data.
 
-The app starts safely with snapshot data and no live-source credentials. Live
-Salesforce/Snowflake/Gong access should be added only through approved,
-read-only runtime connections; no secrets or private extracts belong in Git.
+The app starts safely in uploaded-snapshot mode with no live-source
+credentials. In this mode, uploads through Admin → Data Management replace
+the matching source file, reload the adapters, and become the source of truth
+for the whole dashboard after refresh. Salesforce/Snowflake/Gong live access
+is disabled by default; it should be enabled only through approved,
+read-only runtime connections. No secrets or private extracts belong in Git.
 
 ## Local AE Compass data folder
 

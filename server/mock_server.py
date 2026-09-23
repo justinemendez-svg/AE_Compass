@@ -54,7 +54,7 @@ WORKDAY_USERS = []
 
 def source_data_as_of():
     """Return the latest verified local extract timestamp, when available."""
-    paths = [CLARI_FORECAST_FILE, PIPELINE_EXPORT_FILE, SFDC_EXPORT_FILE]
+    paths = [DRIVE_HIERARCHY_FILE, CLARI_FORECAST_FILE, PIPELINE_EXPORT_FILE, SFDC_EXPORT_FILE, DATA_DIR / "account_landscape_current.csv"]
     timestamps = [path.stat().st_mtime for path in paths if path.exists()]
     if not timestamps:
         return None
@@ -70,6 +70,13 @@ SOURCE_FILE_PURPOSES = {
     "AE_Compass_AppFoundry_Data.zip": "Slim AppFoundry deployment bundle",
 }
 SOURCE_FILE_NAMES = set(SOURCE_FILE_PURPOSES) - {"AE_Compass_AppFoundry_Data.zip"}
+REQUIRED_SOURCE_FILES = (
+    "workday_hierarchy_chris_donato.csv",
+    "clari_forecast_current_quarter.csv",
+    "gtmsi_pipeline_current_quarter.csv",
+    "salesforce_opportunities_current_quarter.csv",
+    "account_landscape_current.csv",
+)
 
 
 def data_source_inventory():
@@ -93,7 +100,10 @@ def data_source_inventory():
     return {
         "directory": str(DATA_DIR),
         "exists": DATA_DIR.exists(),
+        "source_mode": "uploaded_snapshot",
         "source_as_of": source_data_as_of(),
+        "required_files": list(REQUIRED_SOURCE_FILES),
+        "missing_files": [name for name in REQUIRED_SOURCE_FILES if not (DATA_DIR / name).is_file()],
         "files": files,
     }
 
@@ -1330,6 +1340,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/gong":
             raw_ids = q.get("opportunity_ids", "")
             ids = [value for value in raw_ids.split("|") if value]
+            if os.environ.get("AE_COMPASS_LIVE_SOURCES", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+                return self._send({"connected": False, "signals": [], "message": "Snapshot mode: Gong is disabled; uploaded dashboard data remains the source of truth."})
             return self._send(fetch_gong_signals(ids))
 
         m = re.match(r"^/api/quota/([^/]+)$", path)

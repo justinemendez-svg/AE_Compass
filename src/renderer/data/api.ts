@@ -128,7 +128,10 @@ export interface DataSourceFile {
 export interface DataSourceInventory {
   directory: string;
   exists: boolean;
+  source_mode?: string;
   source_as_of: string | null;
+  required_files?: string[];
+  missing_files?: string[];
   files: DataSourceFile[];
 }
 
