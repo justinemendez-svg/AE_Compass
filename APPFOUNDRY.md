@@ -22,6 +22,8 @@ existing Vision app and does not modify or import Vision code.
    `clari_forecast_current_quarter.csv`,
    `gtmsi_pipeline_current_quarter.csv`, and
    `salesforce_opportunities_current_quarter.csv`.
+   For Account Landscape/Bullseye, also provide
+   `account_landscape_current.csv`.
 4. Add `OPENAI_API_KEY` as an AppFoundry secret and set
    `OPENAI_BASE_URL=https://ai-gateway.zende.sk/v1` for Ask Compass.
 5. Set the signed-in identity header mapping to `X-Forwarded-Email` if the
@@ -64,6 +66,14 @@ Set `AE_COMPASS_DATA_DIR` explicitly in other environments. The Admin → Data
 Management tab now reads this folder and shows the source files, modification
 times, and download links. It does not expose arbitrary filesystem paths or
 allow path traversal.
+
+`account_landscape_current.csv` is the normalized Account/Bullseye snapshot
+used when Salesforce/GTM live connectors are unavailable. It should include at
+least `account_id`, `account_name`, `owner_name`, and `arr`; the dashboard also
+maps `current_product`, `bullseye_recommendation`, `support_plan`,
+`account_health`, `support_seats`, `max_seats`, `vertical`, `top_3000`,
+`with_ela`, and `cohorts` when present. Negative ARR rows are excluded, zero
+ARR rows are Prospects, and positive ARR rows are Customers.
 
 To refresh the folder and generate the compact AppFoundry bundle after the
 approved source pulls are available:

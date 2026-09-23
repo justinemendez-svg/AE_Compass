@@ -42,6 +42,7 @@ WHERE Account__c IN (
 
 _ACCOUNT_CACHE_TTL_SECONDS = 120
 _ACCOUNT_CACHE = {}
+ACCOUNT_EXPORT_FILE = Path(os.environ.get("ACCOUNT_EXPORT_FILE", str(Path(os.environ.get("AE_COMPASS_DATA_DIR", "/app/runtime-data")) / "account_landscape_current.csv")).strip()).expanduser()
 
 
 def _number(value):
@@ -49,6 +50,76 @@ def _number(value):
         return float(value or 0)
     except (TypeError, ValueError):
         return None
+
+
+def clear_cache():
+    """Clear the account snapshot cache after an approved data upload."""
+    _ACCOUNT_CACHE.clear()
+
+
+def _csv_value(row, *names):
+    normalized = {str(key).strip().casefold().replace(" ", "_").replace("-", "_"): value for key, value in row.items()}
+    for name in names:
+        value = normalized.get(name.casefold().replace(" ", "_").replace("-", "_"))
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def _load_account_export(owner_name=""):
+    """Load the normalized Account/Bullseye snapshot used by AppFoundry."""
+    if not ACCOUNT_EXPORT_FILE.exists():
+        return None
+    try:
+        import csv
+        with ACCOUNT_EXPORT_FILE.open(newline="", encoding="utf-8-sig") as handle:
+            source_rows = list(csv.DictReader(handle))
+    except (OSError, csv.Error):
+        return None
+    owner_filter = (owner_name or "").strip().casefold()
+    rows = []
+    for source in source_rows:
+        owner = _csv_value(source, "owner_name", "owner", "account_owner")
+        if owner_filter and owner_filter != "all" and owner.casefold() != owner_filter:
+            continue
+        account_id = _csv_value(source, "account_id", "id", "accountid")
+        account_name = _csv_value(source, "account_name", "name", "account")
+        if not account_id and not account_name:
+            continue
+        arr = _number(_csv_value(source, "arr", "account_arr", "account_arr_in_usd", "account_arr_in_usd__c"))
+        if arr is None or arr < 0:
+            continue
+        def text(*names):
+            return _csv_value(source, *names)
+        def number(*names):
+            return _number(text(*names))
+        rows.append({
+            "account_id": account_id,
+            "account_name": account_name,
+            "owner_name": owner,
+            "owner_id": text("owner_id", "ownerid"),
+            "account_type": "Customer" if arr > 0 else "Prospect",
+            "account_status": text("account_status", "zd_account_status", "status"),
+            "arr": arr,
+            "bullseye_recommendation": text("bullseye_recommendation", "recommendation", "recommended_products"),
+            "bullseye_reason": text("bullseye_reason", "reason_for_recommendation", "recommendation_reason"),
+            "bullseye_tier": text("bullseye_tier", "priority", "priority_tier", "propensity_score_tier"),
+            "bullseye_updated_at": text("bullseye_updated_at", "recommendation_updated_at"),
+            "current_product": text("current_product", "current_products"),
+            "vertical": text("vertical", "key_verticals"),
+            "top_3000": text("top_3000", "top_3000_flag"),
+            "with_ela": text("with_ela", "with_ela_current_date"),
+            "cohorts": text("cohorts", "cohort"),
+            "suite_plan": text("suite_plan", "support_plan", "support_plan__c"),
+            "csm_health_status": text("csm_health_status", "account_health", "c_c_score", "c_c_score__c"),
+            "avg_monthly_tickets": number("avg_monthly_tickets", "monthly_ticket_volume"),
+            "seats": number("seats", "total_number_of_seats"),
+            "support_seats": number("support_seats", "support_agents", "support_agent_count"),
+            "max_seats": number("max_seats", "zd_max_agents", "cs_max_agents"),
+            "opportunities": [],
+            "source": "Uploaded Account/Bullseye snapshot",
+        })
+    return rows
 
 
 def _run_query(soql):
@@ -129,6 +200,10 @@ def fetch_accounts(owner_name=""):
     cached = _ACCOUNT_CACHE.get(cache_key)
     if cached and time.monotonic() - cached["created_at"] < _ACCOUNT_CACHE_TTL_SECONDS:
         return copy.deepcopy(cached["rows"])
+    exported = _load_account_export(owner_name)
+    if exported is not None:
+        _ACCOUNT_CACHE[cache_key] = {"created_at": time.monotonic(), "rows": copy.deepcopy(exported)}
+        return exported
     try:
         owner_filter = (owner_name or "").strip()
         query = ACCOUNT_SOQL

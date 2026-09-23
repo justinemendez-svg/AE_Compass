@@ -33,7 +33,7 @@ from quarter_utils import canonical_quarter
 from sfdc_live import fetch_live
 from gong_live import fetch_gong_signals
 from assistant import AssistantUnavailable, answer_question
-from account_landscape import fetch_accounts, attach_opportunities
+from account_landscape import fetch_accounts, attach_opportunities, clear_cache as clear_account_cache
 
 STATE_DIR = Path(os.environ.get("AE_COMPASS_STATE_DIR", str(Path(__file__).parent))).expanduser()
 STATE_FILE = STATE_DIR / "mock_state.json"
@@ -62,6 +62,7 @@ SOURCE_FILE_PURPOSES = {
     "clari_forecast_current_quarter.csv": "Clari quota, forecast, and quarterly targets",
     "gtmsi_pipeline_current_quarter.csv": "GTM/Snowflake pipeline and product context",
     "salesforce_opportunities_current_quarter.csv": "Salesforce opportunities and signed bookings",
+    "account_landscape_current.csv": "Salesforce/Bullseye account and instance snapshot",
     "AE_Compass_AppFoundry_Data.zip": "Slim AppFoundry deployment bundle",
 }
 SOURCE_FILE_NAMES = set(SOURCE_FILE_PURPOSES) - {"AE_Compass_AppFoundry_Data.zip"}
@@ -106,6 +107,7 @@ def reload_source_files():
         ROSTER = DRIVE_ROSTER
     if PIPELINE_EXPORT:
         ROWS = PIPELINE_EXPORT
+    clear_account_cache()
     return {"roster": len(ROSTER), "pipeline": len(ROWS), "signed": len(SFDC_ROWS)}
 
 
