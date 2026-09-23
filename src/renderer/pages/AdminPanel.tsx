@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, DataSourceInventory, DirectoryPerson, RosterAE } from '../data/api';
 import { AccessProfile, AccessScope, ADMIN_PASSWORD, loadVisits, VisitRecord } from '../auth';
 import { AlertCircle, CalendarDays, CheckCircle2, Clock3, Download, Eye, FileText, Pencil, RefreshCw, Search, Upload, UserPlus, UserX, Users } from 'lucide-react';
+import DataManagementPanel from './DataManagementPanel';
 
 export type AdminSection = 'access' | 'visits' | 'data';
 interface Props { currentUser: AccessProfile; profiles: AccessProfile[]; roster: RosterAE[]; onProfilesChange: (profiles: AccessProfile[]) => void; activeSection: AdminSection; setActiveSection: (section: AdminSection) => void; }
@@ -91,6 +92,7 @@ export default function AdminPanel({ currentUser, profiles, roster, onProfilesCh
   const scopeLabel = (profile: AccessProfile) => profile.accessLevel === 'full' ? 'Full access' : (profile.accessScopes || []).map((scope) => `${scope.type}: ${scope.value}`).join(', ') || 'Own profile';
 
   if (currentUser.role !== 'Admin') return <div className="rounded-xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">Admin access is required.</div>;
+  if (activeTab === 'data') return <DataManagementPanel />;
   return <div className={`admin-tab-${activeTab} mx-auto max-w-6xl`}>
     <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent-shamrock">Compass control room</p><h1 className="mt-1 text-2xl font-semibold text-gray-900">Compass Backstage</h1><p className="mt-1 text-sm text-gray-500">Keep the right people on course—and peek at who’s stopping by.</p></div>
     <div className="mt-6">
