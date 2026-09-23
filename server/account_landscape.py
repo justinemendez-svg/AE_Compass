@@ -42,7 +42,8 @@ WHERE Account__c IN (
 
 _ACCOUNT_CACHE_TTL_SECONDS = 120
 _ACCOUNT_CACHE = {}
-ACCOUNT_EXPORT_FILE = Path(os.environ.get("ACCOUNT_EXPORT_FILE", str(Path(os.environ.get("AE_COMPASS_DATA_DIR", "/app/runtime-data")) / "account_landscape_current.csv")).strip()).expanduser()
+_DEFAULT_DATA_DIR = "/Users/justine.mendez/Library/CloudStorage/GoogleDrive-justine.mendez@zendesk.com/Shared drives/GTM Ops/APAC/AE Compass"
+ACCOUNT_EXPORT_FILE = Path(os.environ.get("ACCOUNT_EXPORT_FILE", str(Path(os.environ.get("AE_COMPASS_DATA_DIR", _DEFAULT_DATA_DIR)) / "account_landscape_current.csv")).strip()).expanduser()
 
 
 def _number(value):
@@ -204,6 +205,12 @@ def fetch_accounts(owner_name=""):
     if exported is not None:
         _ACCOUNT_CACHE[cache_key] = {"created_at": time.monotonic(), "rows": copy.deepcopy(exported)}
         return exported
+    # Local preview and AppFoundry both run in upload/snapshot mode by
+    # default. Never fall through to the developer-only Salesforce CLI when
+    # the normalized account snapshot has not been uploaded yet.
+    if os.environ.get("AE_COMPASS_LIVE_SOURCES", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+        _ACCOUNT_CACHE[cache_key] = {"created_at": time.monotonic(), "rows": []}
+        return []
     try:
         owner_filter = (owner_name or "").strip()
         query = ACCOUNT_SOQL
