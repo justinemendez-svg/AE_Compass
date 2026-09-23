@@ -225,6 +225,15 @@ def _t_gong_calls(viewer: str, quarter: str, args: dict) -> dict:
     """
     import mock_server
 
+    if os.environ.get("AE_COMPASS_LIVE_SOURCES", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+        return {
+            "source": "uploaded_snapshot",
+            "connected": False,
+            "message": "Gong is disabled in uploaded-snapshot mode. No uploaded Gong call extract is configured.",
+            "signals": [],
+            "facts": [],
+        }
+
     rows = _rows(viewer, quarter)
     requested_id = str(args.get("opportunity_id") or "").strip()
     keyword = str(args.get("keyword") or "").strip().casefold()
@@ -274,8 +283,6 @@ def _t_gong_calls(viewer: str, quarter: str, args: dict) -> dict:
 
 def _t_gtm_context(viewer: str, quarter: str, args: dict) -> dict:
     """Read current GTMI product context through the GTM Ops connector."""
-    from gtm_live import fetch_gtm_context
-
     rows = _rows(viewer, quarter)
     requested_id = str(args.get("opportunity_id") or "").strip()
     keyword = str(args.get("keyword") or "").strip().casefold()
@@ -292,6 +299,31 @@ def _t_gtm_context(viewer: str, quarter: str, args: dict) -> dict:
         ]).casefold()]
     else:
         candidates = rows[:50]
+    if os.environ.get("AE_COMPASS_LIVE_SOURCES", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+        records = [{
+            "crm_opportunity_id": r.get("crm_opportunity_id"),
+            "product": r.get("product"),
+            "product_arr_usd": r.get("product_arr_usd", 0),
+            "product_booking_arr_usd": r.get("product_booking_arr_usd", 0),
+            "stage_name": r.get("stage_name"),
+            "opportunity_type": r.get("opportunity_type"),
+            "date_label": r.get("date_label"),
+            "opportunity_is_commissionable": r.get("opportunity_is_commissionable"),
+        } for r in candidates]
+        return {
+            "source": "uploaded_gtmsi_snapshot",
+            "connected": bool(records),
+            "message": "GTMI context loaded from the uploaded pipeline snapshot.",
+            "records": records,
+            "facts": [{
+                "fact_id": f"gtm_snapshot_{index + 1}",
+                "opportunity": row.get("opportunity_name") or row.get("crm_account_name") or row.get("crm_opportunity_id"),
+                "amount": row.get("product_arr_usd", 0),
+                "stage": row.get("stage_name"),
+                "close_date": row.get("closedate"),
+            } for index, row in enumerate(candidates)],
+        }
+    from gtm_live import fetch_gtm_context
     ids = [str(r.get("crm_opportunity_id") or "").strip() for r in candidates if r.get("crm_opportunity_id")]
     payload = fetch_gtm_context(ids)
     records = payload.get("records") or []
@@ -425,14 +457,14 @@ def _history_pairs(history) -> list[dict[str, str]]:
 _SYSTEM = (
     "You are Ask Compass, a calm, encouraging, and analytical deal co-pilot for Zendesk AEs. "
     "You have tools that read the signed-in AE's authorized dashboard data: Salesforce opportunity facts and bookings, "
-    "GTMI pipeline/product context, Clari quota and forecast, Gong call briefs and next steps, stage mix, linearity, "
+    "GTMI pipeline/product context, Clari quota and forecast, Gong call briefs and next steps when an approved live connector is enabled, stage mix, linearity, "
     "pipeline creation, roster, and deal search. Use the tools to pull real data before "
     "answering a data question — never answer from memory. Analyze and connect the dots across what the tools return, "
     "reference real numbers, name specific opportunities when useful, say why it matters, and suggest one practical next move. "
     "Source rules: use Clari for quota and forecast; use Salesforce-backed data for opportunity facts, signed bookings, "
     "and the dashboard's main pipeline; use GTMI only for its product-qualified pipeline context; when the question is "
     "about AI, New Business, product mix, pipeline product, or GTMI, call query_gtm_context so the answer is checked "
-    "against the GTM Ops repository connector; use Gong only when its "
+    "against the uploaded GTMI snapshot in snapshot mode; use Gong only when its "
     "verified opportunity-ID match returns a call. Never treat a missing Gong result as proof that no call exists. "
     "If evidence is missing, say so clearly. Never produce SQL, URLs, CRM IDs, or code. "
     "When you have everything you need and are ready to give the final answer (no more tool calls), respond with ONLY a "
