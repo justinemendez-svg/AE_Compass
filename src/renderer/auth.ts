@@ -23,6 +23,7 @@ export interface AccessProfile {
 
 const STORAGE_KEY = 'ae-compass-access-profiles';
 const SESSION_KEY = 'ae-compass-session';
+export const ADMIN_TOKEN_KEY = 'ae-compass-admin-token';
 const VISITS_KEY = 'ae-compass-visits';
 // AppFoundry authenticates through the signed-in identity header. A local
 // admin password may be supplied only through an ignored Vite environment
@@ -79,6 +80,7 @@ export function setSessionId(id: string) {
 
 export function clearSession() {
   sessionStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(ADMIN_TOKEN_KEY);
 }
 
 export function recordVisit(profile: AccessProfile) {

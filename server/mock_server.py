@@ -19,6 +19,9 @@ import random
 import re
 import datetime
 import cgi
+import base64
+import hashlib
+import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
@@ -40,6 +43,7 @@ STATE_FILE = STATE_DIR / "mock_state.json"
 UPLOAD_DIR = STATE_DIR / "uploads"
 LOCAL_AUTH_EMAIL = os.environ.get("AE_COMPASS_LOCAL_EMAIL", "justine.mendez@zendesk.com").strip().lower()
 ADMIN_PASSWORD = os.environ.get("AE_COMPASS_ADMIN_PASSWORD", "")
+ADMIN_TOKEN_TTL_SECONDS = 12 * 60 * 60
 DEFAULT_DATA_DIR = Path("/Users/justine.mendez/Library/CloudStorage/GoogleDrive-justine.mendez@zendesk.com/Shared drives/GTM Ops/APAC/AE Compass")
 DATA_DIR = Path(os.environ.get("AE_COMPASS_DATA_DIR", str(DEFAULT_DATA_DIR))).expanduser()
 DRIVE_HIERARCHY_FILE = DATA_DIR / "workday_hierarchy_chris_donato.csv"
@@ -166,6 +170,36 @@ def auth_identity(handler):
 
 def verify_admin_password(password):
     return bool(ADMIN_PASSWORD) and password == ADMIN_PASSWORD
+
+
+def issue_admin_token(password):
+    """Issue a short-lived, signed token after the admin password is verified."""
+    if not verify_admin_password(password):
+        return None
+    expires = int(datetime.datetime.now(datetime.timezone.utc).timestamp()) + ADMIN_TOKEN_TTL_SECONDS
+    payload = f"admin:{expires}".encode("utf-8")
+    signature = hmac.new(ADMIN_PASSWORD.encode("utf-8"), payload, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(payload + b":" + signature).decode("ascii").rstrip("=")
+
+
+def verify_admin_token(token):
+    """Validate an AppFoundry admin session token without storing credentials."""
+    if not token or not ADMIN_PASSWORD:
+        return False
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
+        payload, signature = raw.rsplit(b":", 1)
+        expected = hmac.new(ADMIN_PASSWORD.encode("utf-8"), payload, hashlib.sha256).digest()
+        if not hmac.compare_digest(signature, expected):
+            return False
+        prefix, expiry = payload.decode("utf-8").split(":", 1)
+        return prefix == "admin" and int(expiry) >= int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    except (ValueError, TypeError, UnicodeDecodeError):
+        return False
+
+
+def admin_request_authorized(handler):
+    return verify_admin_token(handler.headers.get("X-AE-Compass-Admin-Token", ""))
 
 # ─── FISCAL CALENDAR ──────────────────────────────────────────────────────────
 QUARTERS = ["FY2027Q1", "FY2027Q2", "FY2027Q3", "FY2027Q4"]
@@ -1250,6 +1284,8 @@ class Handler(BaseHTTPRequestHandler):
                 })
             return self._send({"authenticated": False, "email": email, "name": None}, 404)
         if path == "/api/admin/uploads":
+            if not admin_request_authorized(self):
+                return self._send({"error": "Admin authentication required."}, 401)
             return self._send(STATE.get("uploads", []))
         if path == "/api/roster":
             return self._send(get_roster())
@@ -1330,8 +1366,11 @@ class Handler(BaseHTTPRequestHandler):
         data = self._body()
 
         if path == "/api/admin/verify":
-            return self._send({"valid": verify_admin_password(str(data.get("password") or ""))})
+            token = issue_admin_token(str(data.get("password") or ""))
+            return self._send({"valid": bool(token), "admin_token": token})
         if path == "/api/admin/upload":
+            if not admin_request_authorized(self):
+                return self._send({"error": "Admin authentication required."}, 401)
             try:
                 global SFDC_ROWS
                 filename, content, dataset = self._multipart_upload()

@@ -1,4 +1,10 @@
 const API_BASE = '/api';
+const ADMIN_TOKEN_KEY = 'ae-compass-admin-token';
+
+function adminHeaders(): Record<string, string> {
+  const token = sessionStorage.getItem(ADMIN_TOKEN_KEY);
+  return token ? { 'X-AE-Compass-Admin-Token': token } : {};
+}
 
 async function fetchJSON<T>(path: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(`${window.location.origin}${API_BASE}${path}`);
@@ -385,7 +391,10 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
     });
-    return res.json();
+    const result = await res.json();
+    if (result.valid && result.admin_token) sessionStorage.setItem(ADMIN_TOKEN_KEY, result.admin_token);
+    else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    return result;
   },
 
   adminUpload: async (file: File, password: string, dataset = 'Pipeline & bookings') => {
@@ -394,7 +403,7 @@ export const api = {
     formData.append('dataset', dataset);
     const res = await fetch(`${API_BASE}/admin/upload`, {
       method: 'POST',
-      headers: { 'X-Admin-Password': password },
+      headers: adminHeaders(),
       body: formData,
     });
     if (!res.ok) {
@@ -406,10 +415,19 @@ export const api = {
 
   adminListUploads: async (password: string) => {
     const res = await fetch(`${API_BASE}/admin/uploads`, {
-      headers: { 'X-Admin-Password': password },
+      headers: adminHeaders(),
     });
     return res.json();
   },
 
-  adminListDataSources: () => fetchJSON<DataSourceInventory>('/admin/data-sources'),
+  adminListDataSources: () => fetch(`${API_BASE}/admin/data-sources`, { headers: adminHeaders() }).then(async (res) => {
+    if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+    return res.json() as Promise<DataSourceInventory>;
+  }),
+
+  adminDownloadDataSource: async (filename: string) => {
+    const res = await fetch(`${API_BASE}/admin/data-download/${encodeURIComponent(filename)}`, { headers: adminHeaders() });
+    if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+    return res.blob();
+  },
 };

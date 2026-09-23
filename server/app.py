@@ -99,17 +99,22 @@ GETTERS = {
 
 @app.get("/api/admin/uploads")
 def uploads():
+    if not backend.admin_request_authorized(_HeaderShim()):
+        return _json({"error": "Admin authentication required."}, 401)
     return _json(backend.STATE.get("uploads", []))
 
 
 @app.post("/api/admin/verify")
 def verify_admin():
     data = request.get_json(silent=True) or {}
-    return _json({"valid": backend.verify_admin_password(str(data.get("password") or ""))})
+    token = backend.issue_admin_token(str(data.get("password") or ""))
+    return _json({"valid": bool(token), "admin_token": token})
 
 
 @app.post("/api/admin/upload")
 def admin_upload():
+    if not backend.admin_request_authorized(_HeaderShim()):
+        return _json({"error": "Admin authentication required."}, 401)
     upload = request.files.get("file")
     if upload is None or not upload.filename:
         return _json({"error": "Choose a file before uploading."}, 400)
