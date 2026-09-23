@@ -4,7 +4,7 @@ import {
   Command, Flame, Gauge, Moon, Search, Sparkles, Sun, Target,
   TrendingUp, AlertTriangle, Users, LogOut,
 } from 'lucide-react';
-import { api, MetricsSummary, ForecastSummary, GongSignal, PipelineDeal, LandscapeAccount } from '../data/api';
+import { api, MetricsSummary, ForecastSummary, GongSignal, PipelineDeal, LandscapeAccount, RosterAE } from '../data/api';
 
 type Tone = 'green' | 'violet' | 'amber' | 'rose';
 type CompassView = 'My day' | 'My deals' | 'Progress' | 'Account Landscape';
@@ -426,16 +426,20 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
   const [liveData, setLiveData] = useState<LiveCompassData>({ forecast: null, metrics: null, pipeline: [] });
   const [nextData, setNextData] = useState<LiveCompassData>({ forecast: null, metrics: null, pipeline: [], gtmiPipeline: null });
   const [fiscalYearData, setFiscalYearData] = useState<FiscalYearQuarterData[]>([]);
+  const [roster, setRoster] = useState<RosterAE[]>([]);
+  const [selectedOwner, setSelectedOwner] = useState('');
   const [accountLandscape, setAccountLandscape] = useState<{ accounts: LandscapeAccount[]; connected: boolean; message: string; loading: boolean }>({ accounts: [], connected: false, message: '', loading: true });
   const liveDeals = liveDealCards(liveData.pipeline);
   const displayedDeals = liveDeals;
+  const scopedOwner = isAdmin && selectedOwner ? selectedOwner : viewerName;
+  const viewingAll = isAdmin && !selectedOwner;
 
   useEffect(() => {
     let active = true;
     const scope = (quarter: string) => [
-      api.getForecast(isAdmin ? 'all' : viewerName, quarter),
-      api.getMetricsSummary(isAdmin ? { all: '1', quarter } : { owner_name: viewerName, quarter }),
-      api.getPipeline(isAdmin ? { all: '1', quarter } : { owner_name: viewerName, quarter }),
+      api.getForecast(viewingAll ? 'all' : scopedOwner, quarter),
+      api.getMetricsSummary(viewingAll ? { all: '1', quarter } : { owner_name: scopedOwner, quarter }),
+      api.getPipeline(viewingAll ? { all: '1', quarter } : { owner_name: scopedOwner, quarter }),
     ];
     Promise.all(scope(CURRENT_QUARTER)).then(([forecast, metrics, pipeline]) => {
       if (active) setLiveData({ forecast, metrics, pipeline, gongSignals: [] });
@@ -445,7 +449,7 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
     }).catch(() => { /* Keep the shell usable when the local data server is offline. */ });
     Promise.all([
       ...scope(NEXT_QUARTER),
-      api.getGtmiPipelineSummary(isAdmin ? { all: '1', quarter: NEXT_QUARTER } : { owner_name: viewerName, quarter: NEXT_QUARTER }),
+      api.getGtmiPipelineSummary(viewingAll ? { all: '1', quarter: NEXT_QUARTER } : { owner_name: scopedOwner, quarter: NEXT_QUARTER }),
     ]).then(([forecast, metrics, pipeline, gtmiPipeline]) => {
       if (active) setNextData({ forecast, metrics, pipeline, gtmiPipeline, gongSignals: [] });
       api.getGong(pipeline.filter((row) => stageNumber(row) === 1).map((row) => row.crm_opportunity_id)).then((gong) => {
@@ -453,17 +457,22 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
       }).catch(() => { /* Gong is optional; Next-quarter deals should still render. */ });
     }).catch(() => { /* Next-quarter data may not be available in the loaded feeds. */ });
     Promise.all(FISCAL_QUARTERS.map((quarter) => Promise.all([
-      api.getForecast(isAdmin ? 'all' : viewerName, quarter),
-      api.getMetricsSummary(isAdmin ? { all: '1', quarter } : { owner_name: viewerName, quarter }),
+      api.getForecast(viewingAll ? 'all' : scopedOwner, quarter),
+      api.getMetricsSummary(viewingAll ? { all: '1', quarter } : { owner_name: scopedOwner, quarter }),
     ]).then(([forecast, metrics]) => ({ forecast, metrics }))))
       .then((rows) => { if (active) setFiscalYearData(rows); })
       .catch(() => { if (active) setFiscalYearData([]); });
     setAccountLandscape((current) => ({ ...current, loading: true }));
-    api.getAccountLandscape(isAdmin ? 'all' : viewerName)
+    api.getAccountLandscape(viewingAll ? 'all' : scopedOwner)
       .then((result) => { if (active) setAccountLandscape({ ...result, loading: false }); })
       .catch(() => { if (active) setAccountLandscape({ accounts: [], connected: false, message: 'No verified account data was returned for the signed-in AE.', loading: false }); });
     return () => { active = false; };
-  }, [viewerName, isAdmin]);
+  }, [viewerName, isAdmin, scopedOwner, viewingAll]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.getRoster().then(setRoster).catch(() => setRoster([]));
+  }, [isAdmin]);
   const myDayCards = [
     ['Quota progress', liveData.forecast && liveData.metrics ? `${Math.round((liveData.metrics.bookings_total / Math.max(liveData.forecast.quota, 1)) * 100)}%` : 'Loading…', liveData.forecast && liveData.metrics ? `${compactMoney(Math.max(liveData.forecast.quota - liveData.metrics.bookings_total, 0))} to go` : 'Reading current quarter', 'green', TrendingUp],
     ['Forecast progress', liveData.forecast ? `${Math.round((liveData.forecast.forecast / Math.max(liveData.forecast.quota, 1)) * 100)}%` : 'Loading…', liveData.forecast ? `${compactMoney(Math.max(liveData.forecast.quota - liveData.forecast.forecast, 0))} to go` : 'Reading current quarter', 'green', TrendingUp],
@@ -483,7 +492,7 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
       </aside>
 
       <main className="lg:ml-[248px]">
-        <header className="flex items-center justify-between border-b border-[#e6ebe4] bg-white/80 px-6 py-4 backdrop-blur dark:border-[#29352b] dark:bg-[#111712]/80 sm:px-10"><div className="flex items-center gap-3"><div className="relative"><Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#9aa59c]" /><input className="w-48 rounded-lg border border-[#e6ebe4] bg-[#fbfcfa] py-2 pl-9 pr-3 text-xs outline-none focus:border-[#8fc45e] dark:border-[#29352b] dark:bg-[#1a231c] sm:w-64" placeholder="Search deals, accounts..." /></div><span className="hidden items-center gap-1.5 text-[10px] text-[#879289] sm:flex"><Command className="h-3 w-3" /> K</span></div><div className="flex items-center gap-3"><button onClick={toggleTheme} className="rounded-lg p-2 text-[#829087] hover:bg-[#f1f4ef] dark:hover:bg-[#223024]" aria-label="Toggle theme">{dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button><div className="flex items-center gap-2 border-l border-[#e6ebe4] pl-3 dark:border-[#29352b]"><div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#d9f579] text-[10px] font-bold text-[#25402c]">{viewerName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</div><span className="hidden text-xs font-semibold sm:inline">{viewerName}</span></div><div className="h-6 w-px bg-[#e6ebe4] dark:bg-[#29352b]" /><button onClick={onLogout} className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-[10px] font-semibold text-[#829087] transition-colors hover:bg-[#f1f4ef] hover:text-[#2e603d] dark:text-[#9eafa0] dark:hover:bg-[#223024] dark:hover:text-[#d9f579]" aria-label="Log out"><LogOut className="h-3.5 w-3.5" /><span className="hidden sm:inline">Log out</span></button></div></header>
+        <header className="flex items-center justify-between border-b border-[#e6ebe4] bg-white/80 px-6 py-4 backdrop-blur dark:border-[#29352b] dark:bg-[#111712]/80 sm:px-10"><div className="flex items-center gap-3"><div className="relative"><Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#9aa59c]" /><input className="w-48 rounded-lg border border-[#e6ebe4] bg-[#fbfcfa] py-2 pl-9 pr-3 text-xs outline-none focus:border-[#8fc45e] dark:border-[#29352b] dark:bg-[#1a231c] sm:w-64" placeholder="Search deals, accounts..." /></div><span className="hidden items-center gap-1.5 text-[10px] text-[#879289] sm:flex"><Command className="h-3 w-3" /> K</span></div><div className="flex items-center gap-3">{isAdmin && <label className="hidden items-center gap-2 text-[10px] font-semibold text-[#78847b] md:flex"><Users className="h-3.5 w-3.5" /><select value={selectedOwner} onChange={(event) => setSelectedOwner(event.target.value)} className="max-w-[190px] rounded-lg border border-[#dfe8d7] bg-white px-2.5 py-2 text-[10px] font-semibold text-[#526258] outline-none dark:border-[#344635] dark:bg-[#1a231c] dark:text-[#c8d4c7]"><option value="">All AEs</option>{roster.filter((person) => person.ae_name).sort((a, b) => a.ae_name.localeCompare(b.ae_name)).map((person) => <option key={person.user_id} value={person.ae_name}>{person.ae_name}</option>)}</select></label>}<button onClick={toggleTheme} className="rounded-lg p-2 text-[#829087] hover:bg-[#f1f4ef] dark:hover:bg-[#223024]" aria-label="Toggle theme">{dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button><div className="flex items-center gap-2 border-l border-[#e6ebe4] pl-3 dark:border-[#29352b]"><div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#d9f579] text-[10px] font-bold text-[#25402c]">{scopedOwner.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</div><span className="hidden text-xs font-semibold sm:inline">{isAdmin && selectedOwner ? `Viewing ${scopedOwner}` : viewerName}</span></div><div className="h-6 w-px bg-[#e6ebe4] dark:bg-[#29352b]" /><button onClick={onLogout} className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-[10px] font-semibold text-[#829087] transition-colors hover:bg-[#f1f4ef] hover:text-[#2e603d] dark:text-[#9eafa0] dark:hover:bg-[#223024] dark:hover:text-[#d9f579]" aria-label="Log out"><LogOut className="h-3.5 w-3.5" /><span className="hidden sm:inline">Log out</span></button></div></header>
 
         {activeView === 'My day' ? <div className="mx-auto max-w-[1320px] px-6 py-8 sm:px-10">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#51865c]">{periodCopy[period].eyebrow}</p><h1 className="mt-2 text-3xl font-bold tracking-[-0.04em] sm:text-4xl">{period === 'This Q' ? `Hello, ${viewerName.trim().split(/\s+/)[0] || viewerName}` : periodCopy[period].title} <span className="text-[#8bb848]">✦</span></h1><p className="mt-2 text-sm text-[#78847b]">{periodCopy[period].subtitle}</p></div><div className="flex items-center gap-2 rounded-full border border-[#dfe8d7] bg-white px-3 py-2 text-[10px] font-semibold text-[#4b7853] shadow-sm dark:border-[#344635] dark:bg-[#1a231c] dark:text-[#c8e890]"><span className="h-2 w-2 rounded-full bg-[#23c16b]" /> All systems clear · data synced 12m ago</div></div>
@@ -508,7 +517,7 @@ export default function AECompass({ viewerName, isAdmin, dark, toggleTheme, onLo
           </>}<div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-[#cddbc7] bg-[#fbfdf8] px-4 py-3 text-[10px] text-[#78867b] dark:border-[#344635] dark:bg-[#172018]"><span className="flex items-center gap-2"><Users className="h-3.5 w-3.5 text-[#5c8a64]" /> {liveData.pipeline.length ? 'Matched to your profile and current-quarter data' : 'Reading your profile and current-quarter data'}</span><span className="flex items-center gap-1 font-semibold text-[#5c8a64]"><Calendar className="h-3 w-3" /> Source: Workday · Clari · GTMI · Salesforce</span></div>
         </div> : <CompassSecondaryView view={activeView} activeDeal={activeDeal} setActiveDeal={setActiveDeal} period={period} setPeriod={setPeriod} liveData={period === 'Next Q' ? nextData : liveData} fiscalYearData={fiscalYearData} accountLandscape={accountLandscape} />}
       </main>
-      <FloatingCompass viewerName={viewerName} isAdmin={isAdmin} pipelineCount={liveData.pipeline.length} />
+      <FloatingCompass viewerName={scopedOwner} isAdmin={viewingAll} pipelineCount={liveData.pipeline.length} />
     </div>
   );
 }
